@@ -1,0 +1,39 @@
+{
+  "roots": ["src", "src-tauri", "scripts", "doc"],
+  "extensions": [".rs", ".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs", ".py", ".ps1", ".bat", ".sh"],
+  "excludeSegments": [
+    ".cargo",
+    ".devcontainer",
+    ".git",
+    ".github",
+    ".husky",
+    "artifacts",
+    "__pycache__",
+    "dist",
+    "docs",
+    "examples",
+    "gen",
+    "generated",
+    "node_modules",
+    "release",
+    "target",
+    "template"
+  ],
+  "excludePatterns": [],
+  "outputDir": "doc/codemap",
+  "indexFile": "doc/CODE_MAP_INDEX.md",
+  "cacheFile": "doc/.codemap-cache.json",
+  "pageRows": 100,
+  "hubCount": 40,
+  "defaultModule": "tooling",
+  "modules": {
+    "src-tauri/src/*/": "rust-*",
+    "src-tauri/src/": "rust-root",
+    "src-tauri/": "rust-tauri",
+    "src/*/": "web-*",
+    "src/": "web-root",
+    "crates/*/": "crate-*",
+    "scripts/*/": "scripts-*",
+    "scripts/": "scripts-root"
+  }
+}
