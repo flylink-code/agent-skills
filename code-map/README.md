@@ -17,6 +17,8 @@ node doc/codemap.mjs --check                       # 校验零漂移（CI 可用
 
 Agent 在陌生仓库里最常见的浪费是全仓 `grep` + 整文件读。代码地图把这一步压缩成 1~3 次调用：先看枢纽，知道名字就查行号，知道文件就看清单，实在不知道才走"索引 → 模块页 → 符号页"。生成物可以进版本库，人和 Agent 读同一份真相。
 
+新支持语言只索引声明，不统计这些语言的导入边；不要用枢纽排序判断它们的依赖关系。
+
 **它不是**调用图、类型系统或测试的替代品：只有导入级证据，方法调用、trait 派发、宏展开、动态导入都不计入；缺少边不等于没有依赖。
 
 ## 安装
@@ -60,13 +62,15 @@ pnpm add -D typescript web-tree-sitter tree-sitter-wasms
 | `SKILL.md` | Agent 入口：7 步接入流程、配置语法、验收标准、维护与排错 |
 | `scripts/codemap.mjs` | 生成器本体（复制到 `<项目>/doc/codemap.mjs`） |
 | `scripts/install.mjs` | 从本仓库安装到 Agent skills 目录 / magpie 库 / 项目 `doc/` |
-| `scripts/selftest.mjs` | 端到端自测：临时项目里跑生成、查询、漂移检测（15 项断言） |
+| `scripts/selftest.mjs` | 端到端自测：临时项目里跑生成、查询、漂移检测（包含多语言、查询、漂移和幂等检查） |
 | `templates/codemap.config.json` | 配置模板（Tauri / 前后端混布形态，按项目改） |
 | `templates/AGENTS.section.md` | `AGENTS.md` 里"代码地图"一节的标准写法 |
 
 ## 支持的语言
 
-Rust、TypeScript / TSX / MTS / CTS、JavaScript / MJS / CJS、Python、Shell / PowerShell / BAT。Go、Java、C#、C++ 需要扩 `extract()`；不要假定已覆盖。
+Rust、TypeScript / TSX / MTS / CTS、JavaScript / JSX / MJS / CJS、Python、Shell / PowerShell / BAT，以及 C#、Go、Java、C、C++ 的声明索引。C# / Go / Java / C / C++ 尚不提取导入引用边；XAML、预处理和宏展开不覆盖，语法诊断可能导致索引不完整。
+
+当前 `tree-sitter-wasms` 快照可能对 C# 较新的语法（例如类主构造函数）报告解析诊断；应检查对应源码，不能把有恢复诊断的结果当作完整索引。
 
 ## 设计约束
 

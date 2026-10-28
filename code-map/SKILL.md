@@ -37,7 +37,7 @@ Task Progress:
 | 只有一个仓在子目录 | `["clash-verge-rev", "doc"]` | 生成物放在工作区 `doc/`，不污染仓库 |
 | 非 git 目录 | 同上，但该目录没有 `.git` | 会遍历文件系统（受 `excludeSegments` 限制） |
 
-同时确认语言：生成器内置 **Rust、TS/TSX/MTS/CTS、JS/MJS/CJS、Python、Shell/PowerShell/BAT** 提取。若项目主体是 Go、Java、C#、C++，先告诉用户这套工具需要扩展 `extract()`，不要假装已覆盖。
+同时确认语言：生成器支持 Rust、TS/TSX/MTS/CTS、JS/JSX/MJS/CJS、Python、Shell/PowerShell/BAT，以及 C#、Go、Java、C、C++ 的 tree-sitter 声明索引。新语言只提供声明定位，暂不提取其导入引用边；XAML、预处理和宏展开不覆盖。语法版本不匹配时记录诊断，不得假装完整。
 
 ### Step 2: 安装生成器
 
@@ -116,9 +116,11 @@ node doc/codemap.mjs                      # 首次全量生成
 ### Step 6: 接线文档
 
 1. `AGENTS.md` 增加 `templates/AGENTS.section.md` 的内容（改成项目自己的模块名），放在"代码任务流程"之前。
+   若 `AGENTS.md` 不存在则创建；已存在时保留其他内容，仅更新代码地图段，重复执行不得重复插入。对 `.NET` 等非 Rust/TS 主体项目，明确说明地图不覆盖对应语言的引用边，不能用枢纽排行推断依赖。
 2. 写 `doc/CODE_MAP.md`：三层结构、命令与语义、覆盖契约（roots/排除/各语言提取粒度）、**引用图契约与不覆盖项**、解析恢复基线、完成清单。
 3. 写 `doc/codemap-guide.md`：定位顺序（`--map`/`hubs` → `--find` → `--outline` → 模块页）、本项目的模块速查表、命令、必做清单、FAQ。
 4. 明确生成物归属：`CODE_MAP_INDEX.md`、`codemap/hubs.md`、`codemap/**` 只能由生成器写；手写文档放 `doc/` 根。
+5. 生成器、配置、缓存、索引、地图和手写说明均位于目标项目 `doc/`；`AGENTS.md` 是项目根目录的接入指引，不是生成物。配置中的输出目录、索引和缓存不得指向 `doc/` 外。
 
 ### Step 7: 交付
 

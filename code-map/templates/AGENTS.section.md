@@ -7,7 +7,7 @@
 3. 知道文件：`node doc/codemap.mjs --outline <文件>`，拿该文件全部声明。
 4. 都没有才走模块路由：`doc/CODE_MAP_INDEX.md` → `doc/codemap/<模块>.md` → 符号页 → 源码 `#L行号`。
 
-只读命中段源码，不要整图加载。地图只提供导入级引用证据，真实调用关系、类型与接口实现用 `grep` / `usages` / `rust-analyzer` 确认。
+只读命中段源码，不要整图加载。引用图仅覆盖生成器支持的导入语句，C#、Go、Java、C、C++ 当前只有声明索引，没有引用边；真实调用关系、类型与接口实现用 `rg` 或 LSP 确认。零引用不代表没有依赖。
 
 - 教程：`doc/codemap-guide.md`。方法、覆盖范围、命令：`doc/CODE_MAP.md`。
 - 任何文件新增 / 编辑 / 删除 / 重命名后：`node doc/codemap.mjs`，再 `node doc/codemap.mjs --check`，必须零漂移。

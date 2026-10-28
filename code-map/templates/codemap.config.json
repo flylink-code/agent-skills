@@ -1,6 +1,6 @@
 {
-  "roots": ["src", "src-tauri", "scripts", "doc"],
-  "extensions": [".rs", ".ts", ".tsx", ".mts", ".cts", ".js", ".mjs", ".cjs", ".py", ".ps1", ".bat", ".sh"],
+  "roots": ["src", "src-tauri", "tests", "scripts"],
+  "extensions": [".rs", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".py", ".cs", ".go", ".java", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".ps1", ".bat", ".cmd", ".sh"],
   "excludeSegments": [
     ".cargo",
     ".devcontainer",
@@ -8,6 +8,8 @@
     ".github",
     ".husky",
     "artifacts",
+    "bin",
+    "obj",
     "__pycache__",
     "dist",
     "docs",
@@ -30,8 +32,10 @@
     "src-tauri/src/*/": "rust-*",
     "src-tauri/src/": "rust-root",
     "src-tauri/": "rust-tauri",
-    "src/*/": "web-*",
-    "src/": "web-root",
+    "src/*/": "src-*",
+    "src/": "src-root",
+    "tests/*/": "tests-*",
+    "tests/": "tests-root",
     "crates/*/": "crate-*",
     "scripts/*/": "scripts-*",
     "scripts/": "scripts-root"

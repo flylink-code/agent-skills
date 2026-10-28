@@ -54,7 +54,7 @@ try {
   fs.copyFileSync(path.join(skillRoot, 'scripts', 'codemap.mjs'), path.join(root, 'doc', 'codemap.mjs'));
   write('doc/codemap.config.json', JSON.stringify({
     roots: ['app', 'doc'],
-    extensions: ['.ts', '.tsx', '.rs'],
+    extensions: ['.ts', '.tsx', '.rs', '.cs', '.go', '.java', '.c', '.cpp'],
     excludeSegments: ['node_modules', 'target', 'dist'],
     outputDir: 'doc/codemap',
     indexFile: 'doc/CODE_MAP_INDEX.md',
@@ -116,6 +116,26 @@ try {
   run([]);
   const afterRegeneration = JSON.parse(run([]));
   check('regeneration is idempotent', afterRegeneration.changed === 0, `changed=${afterRegeneration.changed}`);
+
+  write('app/Example.cs', 'namespace Demo;\npublic class Dock {\n public void Open() {}\n public string Name { get; set; }\n}\n');
+  write('app/example.go', 'package demo\ntype Widget struct {}\nfunc Launch() {}\n');
+  write('app/Example.java', 'package demo;\nclass Example {\n void execute() {}\n}\n');
+  write('app/example.c', 'struct Device { int value; };\nint start(void) { return 0; }\n');
+  write('app/example.cpp', 'class Engine { public: void run() {} };\n');
+  const expanded = JSON.parse(run([]));
+  check('indexes added C#, Go, Java, C and C++ files', expanded.files === 9, `files=${expanded.files}`);
+  for (const [name, expected] of [['Dock', 'app/Example.cs:2'], ['Open', 'app/Example.cs:3'], ['Name', 'app/Example.cs:4'], ['Widget', 'app/example.go:2'], ['Launch', 'app/example.go:3'], ['Example', 'app/Example.java:2'], ['execute', 'app/Example.java:3'], ['Device', 'app/example.c:1'], ['start', 'app/example.c:2'], ['Engine', 'app/example.cpp:1']]) {
+    const result = run(['--find', name]);
+    check(`${name} points to ${expected}`, result.includes(expected), result.trim());
+  }
+  check('expanded language map passes --check', JSON.parse(run(['--check'])).changed === 0);
+  const configFile = path.join(root, 'doc', 'codemap.config.json');
+  const config = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+  config.outputDir = '../outside';
+  fs.writeFileSync(configFile, JSON.stringify(config));
+  let rejected = false;
+  try { run([]); } catch (error) { rejected = String(error.stderr).includes('must be inside the project doc/'); }
+  check('rejects output outside doc/', rejected);
 } catch (error) {
   failures.push('unexpected error');
   console.error(error.message);

@@ -63,6 +63,19 @@ const rustKinds = new Set([
   'enum_item', 'enum_variant', 'trait_item', 'type_item', 'associated_type',
   'const_item', 'static_item', 'mod_item', 'macro_definition', 'field_declaration'
 ]);
+const treeLanguages = {
+  '.cs': 'c_sharp', '.go': 'go', '.java': 'java',
+  '.c': 'c', '.h': 'cpp', '.cc': 'cpp', '.cpp': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.hh': 'cpp', '.hxx': 'cpp'
+};
+const treeKinds = new Set([
+  'namespace_declaration', 'file_scoped_namespace_declaration', 'class_declaration',
+  'struct_declaration', 'interface_declaration', 'record_declaration', 'enum_declaration',
+  'enum_member_declaration', 'method_declaration', 'constructor_declaration', 'property_declaration',
+  'event_declaration', 'delegate_declaration', 'field_declaration', 'function_declaration',
+  'function_definition', 'method_definition', 'type_spec', 'type_definition', 'union_specifier',
+  'struct_specifier', 'enum_specifier', 'class_specifier', 'interface_type', 'const_spec',
+  'var_spec', 'enum_constant', 'variable_declarator'
+]);
 const REFERENCE_KINDS = new Set([
   'function_item', 'struct_item', 'union_item', 'enum_item', 'trait_item', 'type_item',
   'const_item', 'static_item', 'macro_definition', 'mod_item',
@@ -120,16 +133,21 @@ export async function extract(file, text) {
     };
     walk(source);
     diagnostics.push(...source.parseDiagnostics.map(d => `line ${source.getLineAndCharacterOfPosition(d.start ?? 0).line + 1}: ${ts.flattenDiagnosticMessageText(d.messageText, ' ')}`));
-  } else if (/\.(rs|py)$/.test(file)) {
-    const language = file.endsWith('.rs') ? 'rust' : 'python';
+  } else if (/\.(rs|py)$/.test(file) || treeLanguages[path.extname(file).toLowerCase()]) {
+    const language = file.endsWith('.rs') ? 'rust' : file.endsWith('.py') ? 'python' : treeLanguages[path.extname(file).toLowerCase()];
     // This grammar snapshot mistakes Rust inner attributes for shebangs. Treat
     // them as outer attributes for declaration extraction, preserving offsets.
     const input = language === 'rust' ? text.replace(/^(\s*)#!(?=\[)/gm, '$1# ') : text;
     const tree = (await parserFor(language)).parse(input);
     const walk = (node, scope = '') => {
       let next = scope;
-      const name = node.childForFieldName('name');
-      if ((language === 'rust' && rustKinds.has(node.type)) || (language !== 'rust' && ['function_definition', 'class_definition'].includes(node.type))) {
+      let name = node.childForFieldName('name');
+      if (!name && ['function_definition', 'function_declaration', 'method_definition'].includes(node.type)) {
+        let declarator = node.childForFieldName('declarator');
+        while (declarator && !['identifier', 'field_identifier', 'qualified_identifier'].includes(declarator.type)) declarator = declarator.childForFieldName('declarator');
+        name = declarator;
+      }
+      if ((language === 'rust' && rustKinds.has(node.type)) || (language === 'python' && ['function_definition', 'class_definition'].includes(node.type)) || (treeLanguages[path.extname(file).toLowerCase()] && treeKinds.has(node.type))) {
         if (name) {
           add(name.text, node.type, node.startPosition.row + 1, scope);
           next = scope ? `${scope}::${name.text}` : name.text;
@@ -347,6 +365,11 @@ function readConfig(root) {
   const configText = fs.readFileSync(configPath, 'utf8');
   const config = JSON.parse(configText);
   if (!Number.isInteger(config.pageRows) || config.pageRows < 1 || config.pageRows > 150) throw new Error('pageRows must be 1..150');
+  for (const [key, fallback] of [['outputDir', 'doc/codemap'], ['indexFile', 'doc/CODE_MAP_INDEX.md'], ['cacheFile', 'doc/.codemap-cache.json']]) {
+    const target = path.resolve(root, config[key] || fallback);
+    const insideDoc = path.relative(path.resolve(root, 'doc'), target);
+    if (!insideDoc || insideDoc === '..' || insideDoc.startsWith(`..${path.sep}`) || path.isAbsolute(insideDoc)) throw new Error(`${key} must be inside the project doc/ directory`);
+  }
   return { config, configText };
 }
 
