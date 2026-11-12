@@ -5,6 +5,8 @@
 | 技能 | 作用 |
 | --- | --- |
 | [`code-map`](code-map/) | 给任意仓库建立确定性代码地图：符号索引 + 导入级引用图 + 枢纽排序，配 `--find` / `--outline` / `--map` / `--check` CLI |
+| [`agent-scaffold`](agent-scaffold/) | 给工厂/仓库搭路由式 Agent 文件体系：≤60 行 `AGENTS.md` 路由 + `agent/` 索引与规则/上下文分片；新工厂 `init`、旧工厂 `adopt`（只注入 marker 区块，既有文档零改动）、`verify`、`uninstall` |
+| [`skill-author`](skill-author/) | 按本仓库约定生成与校验新技能目录：目录名对齐 frontmatter `name`、自包含检查、README 技能表登记 |
 
 ## 安装（magpie）
 
