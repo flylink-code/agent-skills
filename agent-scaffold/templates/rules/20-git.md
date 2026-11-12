@@ -7,29 +7,33 @@
 
 <为什么这么改：问题、约束、放弃了哪种方案>
 
-<影响面：哪些模块/设备/接口受影响>
+<影响面：哪些模块 / 设备 / 接口>
 ```
 
 类型：`feat` `fix` `refactor` `docs` `test` `chore` `perf`。
-范围用模块名，且与 `agent/index.md`、code-map 的 `modules` 用词一致。
+范围用模块名，与 `agent/index.md`、code-map 的 `modules` 用词一致。
 
-**只写"改了什么"是无效提交信息**——要写"为什么"。
+**只写「改了什么」是无效的**——要写「为什么」。
 
 ## 分支
 
 - 主分支保护：不直接提交功能改动。
-- 命名：`fix/<问题>`、`feat/<特性>`、`chore/<杂项>`。
-- 一个分支一件事；发现问题另开分支，不顺手修。
+- 命名：`fix/<问题>`、`feat/<特性>`、`chore/<杂项>`、`migrate/<日期>`。
+- 一个分支一件事；发现问题另开分支。
 
 ## 禁止
 
-- ❌ `git push --force`（除非用户明确要求，且已确认分支只属于自己）。
-- ❌ `git add -A` / `git add .` —— 会带进临时文件与密钥。逐路径 add。
+- ❌ `git push --force`（除非用户明确要求并确认分支只属于自己）。
+- ❌ `git add -A` / `git add .` —— 逐路径 add，避免带进临时文件与密钥。
 - ❌ 提交 `node_modules`、构建产物、`.env`、日志、本机绝对路径。
 - ❌ 把格式化整仓的 diff 混进功能提交。
 
 ## 回滚
 
-- 未推送：`git reset --soft HEAD~1` 保留改动。
-- 已推送：`git revert`，**不要**改写历史。
-- 回滚后要在 `agent/context/decisions.md` 记一行"为什么回滚"。
+- 未推送：`git reset --soft HEAD~1`。
+- 已推送：`git revert`，不改写历史。
+- 回滚后在 `agent/context/decisions.md` 记一行「为什么回滚」。
+
+## 归档与提交的关系
+
+归档时**先提交代码与文档**，再写归档卡。归档卡里必须记录当时的提交号（`commit: abc1234`），否则以后无法还原「归档时的状态」。

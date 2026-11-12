@@ -1,131 +1,86 @@
 ---
 name: skill-author
 description: >-
-  Author a new reusable skill directory that conforms to this repository's conventions
-  (one directory per skill, directory name equals SKILL.md frontmatter `name`, self-contained
-  scripts/templates, README registry updated). Use when the user asks to 新建 skill, 写一个技能,
-  生成可复用能力, 把这个流程做成 skill, 抽取成 skill, add a skill to the repo, or wants a
-  repeatable procedure packaged so later sessions can invoke it instead of re-explaining it.
+  Create, validate and register new skills in this repository following its conventions: one
+  directory per skill, directory name equal to the SKILL.md frontmatter `name`, self-contained
+  scripts/templates, README skill-table entry, and a cheap always-loaded description that does
+  not duplicate the body.
+  Use when the user asks to 新增技能, 写一个 skill, 生成 SKILL.md, 把这个流程做成技能,
+  校验技能目录, 更新 README 技能表, 或者判断「这条要求该写成规则还是技能」.
 ---
 
-# 新建 Skill
+# 新增与校验技能
 
-把一个反复出现的流程，固化成仓库里一个自包含、可被自动发现的技能目录。
+本仓库约定：**一个目录一个技能**，目录名 = `SKILL.md` frontmatter 的 `name`；
+技能目录自包含（脚本、模板都在自己目录内）；README 有一张技能表。
 
-## 仓库约定（硬性）
+## 先判断：该写规则还是技能
 
-| 规则 | 说明 |
+| 判断 | 写什么 |
 | --- | --- |
-| 一目录一技能 | `agent-skills/<name>/SKILL.md` |
-| 目录名 = `name` | frontmatter 的 `name` 必须与目录名逐字一致（小写、连字符） |
-| `name` 格式 | `^[a-z0-9]+(-[a-z0-9]+)*$`，≤ 64 字符 |
-| `description` | 非空、≤ 1024 字符，写清**做什么 + 什么时候用**（含中英文触发词） |
-| 自包含 | 脚本、模板放在技能目录内，不引用目录外相对路径 |
-| 根目录不放 SKILL.md | 仓库根只有 README 与各技能目录 |
-| 登记 | 仓库 `README.md` 的技能表加一行 |
+| 一句话就能说清的约束，任何任务都要遵守 | 规则：`agent-scaffold extend`（进 `agent/rules/`） |
+| 多步流程、有脚本、只在某类任务才用到 | 技能：本 skill |
+| 只对某个目录/文件类型生效 | 规则 + 路径条件，别做成技能 |
+| 需要跑命令产生产物（地图、清单、脚手架） | 技能 + `scripts/` |
+
+**关键**：`description` 是常驻上下文（每个会话都会看到），正文只在命中时才读。
+所以 `description` 要把「什么时候用」写全（中英文关键词都放），正文只放步骤。
 
 ## 工作流程
 
 ```
 Task Progress:
-- [ ] Step 1: 判断该不该做成 skill
-- [ ] Step 2: 命名并写 frontmatter
-- [ ] Step 3: 写正文（工作流 + 验收 + 反模式）
-- [ ] Step 4: 需要脚本/模板时一并生成
-- [ ] Step 5: 跑校验脚本
-- [ ] Step 6: 更新 README 技能表
+- [ ] Step 1: 确认 name（小写连字符）、作用一句话、触发关键词
+- [ ] Step 2: 生成骨架 node scripts/new-skill.mjs new <仓库> <name> --desc "..."
+- [ ] Step 3: 写正文：为什么 / 工作流程 / 命令 / 反模式
+- [ ] Step 4: 脚本实测（至少跑一次 dry-run 与一次真实执行）
+- [ ] Step 5: node scripts/new-skill.mjs check <仓库> 全绿
+- [ ] Step 6: README 技能表已自动登记；提交
 ```
 
-### Step 1: 该不该做成 skill
-
-做成 skill 的条件（满足 2 条以上）：
-
-- 这套流程会被**重复执行**，且每次解释成本高。
-- 有**可判定的成功标准**（不是"看看效果"）。
-- 需要**具体文件产物**（配置、代码、目录结构）。
-- 有很多**易错细节**，靠记忆每次都会漏。
-
-不该做成 skill 的：一次性问答、纯口味偏好、需要人实时判断且无判据的。
-
-### Step 2: 命名
-
-- 用**动作 + 对象**：`agent-scaffold`、`skill-author`、`code-map`。
-- 不要用 `helper`、`utils`、`my-skill` 这类无信息量的名字。
-- 名字要能被"触发词"直接想到。
-
-### Step 3: 正文结构
-
-```markdown
----
-name: <与目录名一致>
-description: >-
-  <做什么。> Use when <什么时候用，含用户可能的原话触发词。>
----
-
-# <标题>
-
-<一句话说明解决什么问题>
-
-## 工作流程
-Task Progress:
-- [ ] Step 1: ...
-（每步写：做什么 → 命令 → 判定标准）
-
-## 验收
-（怎么算成功，尽量可机械校验）
-
-## 反模式
-- ❌ ...
-```
-
-正文要求：
-
-- **步骤可执行**：给命令、给路径、给判定标准；不要"根据需要调整"。
-- **验收可机械校验**：能用脚本检查的，别写"检查是否正确"。
-- **反模式必写**：这是后来者最容易踩的坑，比正向说明更有用。
-- 单个 SKILL.md ≤ 500 行；超了拆 `references/*.md`，正文只留指针。
-
-### Step 4: 脚本与模板
-
-- 脚本放 `scripts/`，模板放 `templates/`。
-- 脚本必须能被 `node <skill>/scripts/xxx.mjs` 直接跑，不依赖 `npm install`。
-- 路径解析一律相对**脚本自身**（`import.meta.url`），不要相对 cwd。
-- 模板里的占位符统一 `{{UPPER_SNAKE}}`。
-
-### Step 5: 校验
+### Step 2 · 生成骨架
 
 ```powershell
-node <skill>/scripts/new-skill.mjs check   <技能目录>
-node <skill>/scripts/new-skill.mjs check   <仓库根>
+node <skill>/scripts/new-skill.mjs new <仓库目录> my-skill --desc "一句话作用 + 什么时候用"
 ```
 
-检查项：
+生成 `my-skill/SKILL.md`（带 frontmatter 与章节骨架）与 `my-skill/scripts/`；
+同时在 README 技能表末尾追加一行。目录已存在时拒绝，不加 `--force` 就不覆盖。
 
-- 目录名与 `name` 一致
-- `name` 匹配 `^[a-z0-9]+(-[a-z0-9]+)*$`
-- `description` 非空且 ≤ 1024 字符
-- SKILL.md 有 `## ` 级小节，有验收/检查类小节
-- 脚本不引用目录外的 `../..` 相对路径
-- 仓库 README 技能表含该技能
+### Step 3 · 正文该写什么
 
-### Step 6: 生成骨架（可选）
+| 章节 | 内容 | 不要写 |
+| --- | --- | --- |
+| 为什么 / 解决什么 | 症状 → 对应件，让人信服 | 空泛的价值主张 |
+| 工作流程 | 编号步骤 + 每步命令 + 判定标准 | 把整篇文档复述一遍 |
+| 目录 / 契约 | 产物路径、配置键、CLI | 实现细节 |
+| 反模式 | 明确「别这么干」及其后果 | 泛泛的「注意安全」 |
+
+行数：`SKILL.md` 建议 ≤ 200 行（模型读长文件会漏后段）；超了就把细节挪到
+`references/*.md`，在正文里留一句「需要 X 时读 references/x.md」。
+
+### Step 5 · 校验
 
 ```powershell
-node <skill>/scripts/new-skill.mjs new <仓库根> <name> --desc "做什么。Use when ..."
+node <skill>/scripts/new-skill.mjs check <仓库目录>
+node <skill>/scripts/new-skill.mjs list  <仓库目录>
 ```
 
-会创建目录、SKILL.md 骨架，并在 README 技能表追加一行（幂等，已存在则跳过）。
+`check` 检查：每个技能目录都有 `SKILL.md`；frontmatter `name` 与目录名一致；
+`description` 非空且含触发关键词；仓库根**没有** `SKILL.md`；README 技能表里有对应行；
+`SKILL.md` 行数不超 200（超了给警告而不是报错）。
 
-## 验收
+## 提交前自检
 
-- `check` 全绿。
-- 新开一个会话，只说"用 <name> 做 X"，能被正确触发，且不需要补充背景。
-- `description` 里包含至少一个用户会真实说出口的中文触发词。
+1. 换一个模型只看 `description`，它知道什么时候该用这个技能吗？
+2. 只读正文不看脚本，能照着跑通吗？
+3. 脚本在干净目录里能跑吗（不依赖当前工作目录、不依赖已存在的中间产物）？
+4. 失败时给的是「下一步」还是「报错就停」？
 
 ## 反模式
 
-- ❌ `description` 写成"这个技能很有用" —— 触发词缺失，永远不会被选中。
-- ❌ 目录名 `My_Skill` 而 `name: my-skill` —— 加载器会拒绝。
-- ❌ 正文写"根据项目情况调整" —— 等于没写，下次还得重新想。
-- ❌ 脚本里写 `E:\...` 绝对路径 —— 换机器即坏。
-- ❌ 一个技能塞 5 件不相干的事 —— 拆成 5 个技能。
+- ❌ 在仓库根放 `SKILL.md` —— magpie 会装成 `magpie-skill-<数字>`。
+- ❌ 目录名与 `name` 不一致 —— magpie 用目录名、DSH 读 frontmatter，两边会分裂。
+- ❌ 把长流程塞进 `description` —— 每个会话都要付这份 token，而正文可能一次都不读。
+- ❌ 技能之间互相 `require` 对方目录里的脚本 —— 安装时只复制单个目录，会断。
+- ❌ 只写「怎么做」不写「什么时候不该用」—— 模型会在不该用的时候用它。
