@@ -1,19 +1,19 @@
 ---
 name: agent-scaffold
 description: >-
-  Build or adopt a router-based agent knowledge system for a factory/project: a short AGENTS.md
+  Build or adopt a router-based agent knowledge system for a project: a short AGENTS.md
   router, an agent/ index layer, and rule / playbook / context shards that cover the whole
   lifecycle (create, implement, debug, optimize, archive), plus research rules, archive indexes
   that stop agents from redoing finished work, multi-project isolation, and a non-destructive
   adopt mode for legacy repos with existing AGENTS.md and lots of old documents.
-  Use when the user asks to 建立 agent 文件体系, 初始化 agent 配置, 新工厂接入 agent,
+  Use when the user asks to 建立 agent 文件体系, 初始化 agent 配置, 新工程接入 agent,
   旧工程接入 agent, 整理工程文档给 agent 用, 生成 AGENTS.md, 设计 agent 目录结构,
   避免 agent 重复做已完成的工作, 多工程隔离, 或者要把新规则加进现有体系.
 ---
 
 # Agent 文件体系：全流程知识与接入
 
-给一个工厂（或一个有多工程的工作区）搭一套**路由式** Agent 知识体系：主文件只做索引，
+给一个工程（或一个包含多个工程的工作区）搭一套**路由式** Agent 知识体系：主文件只做索引，
 流程与规则按需读取。目标是让下一个会话（或下一个模型）不用重新问一遍、不用重做已完成的事。
 
 ## 它解决什么
@@ -120,7 +120,7 @@ node <skill>/scripts/scaffold.mjs adopt <目录> --dry-run
 ### Step 4 · 执行
 
 ```powershell
-node <skill>/scripts/scaffold.mjs init  <目录> --name "工厂名"
+node <skill>/scripts/scaffold.mjs init  <目录> --name "工程名"
 node <skill>/scripts/scaffold.mjs adopt <目录>
 ```
 
@@ -183,7 +183,7 @@ node <skill>/scripts/scaffold.mjs extend <目录> --title "日志必须带时间
 ## 反模式
 
 - ❌ 把所有规则塞进 `AGENTS.md` —— 超过预算等于没写。
-- ❌ `cp AGENTS.md` 覆盖旧工厂 —— 抹掉既有约定，且不可逆。
+- ❌ `cp AGENTS.md` 覆盖旧工程 —— 抹掉既有约定，且不可逆。
 - ❌ 在 `context/` 里复制需求正文 —— 第二次变更就全过期。
 - ❌ 旧工程上来就全量重构 —— 先 `audit`/`plan`，拿到用户确认再 `apply`。
 - ❌ 让本 skill 接管代码地图 —— `code-map` 是 SSOT，重复造只会漂移。
