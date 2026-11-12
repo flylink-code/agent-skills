@@ -25,6 +25,7 @@
 | --- | --- |
 | 语言 / 证据分级 / 输出形状 | `agent/rules/00-global.md` |
 | 改代码纪律 | `agent/rules/10-code.md` |
+| UI 文案 / 注释 / TODO 的措辞（写给谁） | `agent/rules/15-audience.md` |
 | 提交 / 分支 / 回滚 | `agent/rules/20-git.md` |
 | 写文档 / 摘要卡 | `agent/rules/30-docs.md` |
 | 排查铁律 | `agent/rules/40-debug.md` |

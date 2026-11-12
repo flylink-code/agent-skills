@@ -26,6 +26,7 @@ description: >-
 | 引用几个月前的结论当现状 | 文档 `status` 字段 + 归档卡「失效条件」 |
 | 需求/选型拍脑袋 | `rules/50-research.md`（先本地、再官方文档、≥3 独立来源） |
 | 改 A 工程顺手动了 B 工程 | `rules/70-isolation.md`（默认互不读写） |
+| 代码 / UI / 文档里留下「按照用户要求…」 | `rules/15-audience.md`（写给最终读者，对话痕迹只进回复） |
 | 规则越写越长，模型开始不遵守 | 三层预算 + `verify` 机器校验 |
 
 ## 三层预算（为什么主文件必须短）
@@ -49,6 +50,7 @@ agent/
   rules/                      # 约束
     00-global.md              #   语言、证据分级、输出形状、什么值得写进 agent 文件
     10-code.md                #   改代码纪律
+    15-audience.md            #   受众与措辞：UI 文案、注释、TODO 写给谁；对话痕迹不进产物
     20-git.md                 #   提交、分支、回滚
     30-docs.md                #   文档类型（Diátaxis）、摘要卡、status
     40-debug.md               #   排查铁律
@@ -175,7 +177,7 @@ node <skill>/scripts/scaffold.mjs extend <目录> --title "日志必须带时间
 ## 阶段与规则的接线
 
 - 阶段：`create → implement → debug → optimize → archive`，对应 `playbooks/10~50-*.md`。
-- 规则：语言/证据分级、代码、git、文档、调试、调研、归档、隔离，对应 `rules/00~70-*.md`。
+- 规则：语言/证据分级、代码、受众与措辞、git、文档、调试、调研、归档、隔离，对应 `rules/00~70-*.md`。
 - 归档不是终点：`ARCHIVE_INDEX.md` 里每条必须有**状态 + 失效条件**，
   `workaround` 不得标成已修复 —— 否则下一个 agent 会把已绕过的问题当已解决。
 - 需求/选型必须先查本地、再上网；采信标准见 `rules/50-research.md`（官方文档 > 有署名工程博客 > 论坛）。

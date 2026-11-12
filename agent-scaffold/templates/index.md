@@ -19,6 +19,7 @@
 | --- | --- |
 | 任何回答的语言 / 证据等级 / 输出形状 | `agent/rules/00-global.md` |
 | 改代码前 | `agent/rules/10-code.md` |
+| 写 UI 文案 / 注释 / TODO / 提交措辞 | `agent/rules/15-audience.md` |
 | 提交 / 分支 / 回滚 | `agent/rules/20-git.md` |
 | 写文档 / 更新摘要卡 | `agent/rules/30-docs.md` |
 | 排查时的铁律 | `agent/rules/40-debug.md` |

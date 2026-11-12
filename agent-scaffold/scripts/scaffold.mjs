@@ -25,7 +25,7 @@ const BEGIN = '<!-- agent-kit:begin -->';
 const END = '<!-- agent-kit:end -->';
 const MANIFEST = path.join('agent', '.manifest.json');
 
-const RULES = ['00-global', '10-code', '20-git', '30-docs', '40-debug', '50-research', '60-archive', '70-isolation'];
+const RULES = ['00-global', '10-code', '15-audience', '20-git', '30-docs', '40-debug', '50-research', '60-archive', '70-isolation'];
 const PLAYBOOKS = ['10-create', '20-implement', '30-debug', '40-optimize', '50-archive'];
 const CONTEXT = ['requirements', 'hardware', 'software', 'plan', 'decisions'];
 /** 只有这三张是「事实源摘要卡」；plan / decisions 是日志 */
