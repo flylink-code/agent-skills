@@ -33,10 +33,11 @@ node code-map/scripts/install.mjs --all-agents        # 所有已存在的 Agent
 node code-map/scripts/install.mjs --agent dsh         # 只装某一个
 node code-map/scripts/install.mjs --library           # magpie 库（~/.config/magpie/library/skills/code-map）
 node code-map/scripts/install.mjs --project D:\proj   # 只把生成器 + 配置模板放进 D:\proj\doc\
+node code-map/scripts/install.mjs --workspace D:\ws   # 多工程：装每个工程 + 工作区 doc/ 放登记表脚本
 node code-map/scripts/install.mjs --list --dry-run    # 看会写到哪里、会改什么
 ```
 
-`--project` 只复制 `codemap.mjs` 与配置模板，**已有 `codemap.config.json` 不会被覆盖**；`--library` / `--agent` 会镜像 `SKILL.md`、`README.md`、`scripts/`、`templates/`，目标里多余的旧文件会被清掉（遇到链接时写穿链接，链接本身不动）。
+`--project` 只复制 `codemap.mjs` 与配置模板，**已有 `codemap.config.json` 不会被覆盖**；`--workspace` 读取 `doc/codemap-workspace.json` 里的 `projects`（没有则自动发现已含配置的子目录），对每个工程执行一次 `--project`，再把 `codemap-workspace.mjs`、登记表模板与 `AGENTS.md` 片段放进工作区 `doc/`；`--library` / `--agent` 会镜像 `SKILL.md`、`README.md`、`scripts/`、`templates/`，目标里多余的旧文件会被清掉（遇到链接时写穿链接，链接本身不动）。
 
 **用在某个项目里**：装好生成器后，按项目改配置再生成：
 
@@ -46,6 +47,22 @@ node code-map/scripts/install.mjs --project <项目>
 node <项目>\doc\codemap.mjs
 node <项目>\doc\codemap.mjs --check
 ```
+
+## 多工程工作区
+
+一个目录下并排放几个独立工程（各自 `.git`、语言可能不同）时，**每个工程各生成一份地图**，工作区根只放一张登记表：配置与缓存互不牵连，改 A 工程不会重写 B 工程的页面。
+
+```powershell
+node code-map/scripts/install.mjs --workspace D:\ws     # 每个工程装生成器 + <ws>\doc\ 放编排脚本
+# 改 <ws>\doc\codemap-workspace.json 的 projects / shared / indexFile
+node <ws>\doc\codemap-workspace.mjs build               # 逐工程生成，再重写登记表（幂等）
+node <ws>\doc\codemap-workspace.mjs check               # 任一工程漂移即失败（提交前 / CI）
+node <ws>\doc\codemap-workspace.mjs find clamp          # 跨工程找符号：只读各工程缓存，不重新解析
+```
+
+登记表 `<ws>\doc\CODE_MAP_INDEX.md` 只有一张工程表（目录、索引根、文件/符号/诊断数、地图入口），Agent 先在这里挑工程，再进各工程自己的 `doc/CODE_MAP_INDEX.md`。
+
+不做的事：不合并地图、不推断跨工程引用边（两份地图没有共同解析器），共用头文件写进 `shared` 人工确认；登记表是生成物，手改会被下次 `build` 覆盖。
 
 ## 依赖
 
@@ -61,10 +78,14 @@ pnpm add -D typescript web-tree-sitter tree-sitter-wasms
 | --- | --- |
 | `SKILL.md` | Agent 入口：7 步接入流程、配置语法、验收标准、维护与排错 |
 | `scripts/codemap.mjs` | 生成器本体（复制到 `<项目>/doc/codemap.mjs`） |
-| `scripts/install.mjs` | 从本仓库安装到 Agent skills 目录 / magpie 库 / 项目 `doc/` |
+| `scripts/install.mjs` | 从本仓库安装到 Agent skills 目录 / magpie 库 / 项目 `doc/` / 多工程工作区 |
+| `scripts/codemap-workspace.mjs` | 多工程编排：逐工程生成、汇总 `check`、跨工程只读 `find`、重写根登记表 |
 | `scripts/selftest.mjs` | 端到端自测：临时项目里跑生成、查询、漂移检测（包含多语言、查询、漂移和幂等检查） |
 | `templates/codemap.config.json` | 配置模板（Tauri / 前后端混布形态，按项目改） |
 | `templates/AGENTS.section.md` | `AGENTS.md` 里"代码地图"一节的标准写法 |
+| `templates/codemap-workspace.json` | 多工程登记表配置模板（`projects` / `shared` / `indexFile`） |
+| `templates/AGENTS.section.workspace.md` | 多工程工作区根 `AGENTS.md` 的"代码地图"一节 |
+| `references/workspace.md` | 多工程为什么各建一份：设计约束、生态对照、不做的事 |
 
 ## 支持的语言
 

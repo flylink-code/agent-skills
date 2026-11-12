@@ -5,6 +5,7 @@ description: >-
   symbol index rendered as Markdown pages, an import-level reference graph with hub ranking,
   and a CLI for --find / --outline / --map / --check. Use when the user asks to 生成代码地图,
   更新代码地图, 接入代码地图, 符号索引, repo map, code map, symbol index, "给新项目做代码地图",
+  多工程代码地图, 一个目录多个工程, workspace code map, monorepo code map,
   or when an agent needs symbol-level navigation and the repository has no LSP, embeddings or
   network access.
 ---
@@ -33,7 +34,7 @@ Task Progress:
 | 形态 | `roots` 怎么写 | 说明 |
 | --- | --- | --- |
 | 仓库即工作区根 | `["src", "src-tauri", "scripts", "doc"]` | 最常见；用 git 索引收集文件 |
-| 工作区里放多个仓库 | `["repo-a", "repo-b", "doc"]` | 每个子目录自带 `.git` 时用各自的 git 索引 |
+| 工作区里放多个仓库 | 每个仓库各自一份 `roots`，**不要**写一张总图 | 各自生成后在工作区 `doc/` 建登记表，见「多工程工作区」一节 |
 | 只有一个仓在子目录 | `["clash-verge-rev", "doc"]` | 生成物放在工作区 `doc/`，不污染仓库 |
 | 非 git 目录 | 同上，但该目录没有 `.git` | 会遍历文件系统（受 `excludeSegments` 限制） |
 
@@ -50,6 +51,8 @@ node <skill>/scripts/install.mjs --all-agents         # 更新各 Agent 的 skil
 ```
 
 生成器默认以自身所在目录的上一级为根，因此放在 `doc/` 下即"项目根 = 工作区根"。
+
+一个目录下有多个工程时，给每个工程各装一份（`--project` 逐个，或用 `--workspace <工作区>` 一次装完），**不要**把多个工程塞进同一份 `roots`，见「多工程工作区」一节。
 
 依赖三个包：`typescript`、`web-tree-sitter`、`tree-sitter-wasms`。解析顺序：脚本目录 → `CODEMAP_REQUIRE_FROM`（目录或 `package.json`）→ 同级 `../Ai-Switcher`、`../magpie`。新项目建议自足：
 
@@ -126,9 +129,40 @@ node doc/codemap.mjs                      # 首次全量生成
 
 报告：文件/符号/引用边/诊断数、模块数与页数、`--check` 结果、抽查过的符号与行号、未覆盖项（语言、外部 crate、宏、动态导入）。不要把"没跑"写成"已验证"。
 
+## 多工程工作区（一个目录下多个工程）
+
+一个目录里并排放着几个独立工程（各自 `.git`、语言可能不同）时，**每个工程各自生成一份地图**，工作区根目录只放一张登记表。不要用 `roots: ["工程A", "工程B"]` 做一张总图：配置只有一份会互相妥协，索引随工程数线性膨胀，单缓存让改一个工程连带重写别的工程页面，而且生成物只能落在 `<root>/doc/`、根总图进不了任何工程仓库。展开的理由与生态对照见 [`references/workspace.md`](references/workspace.md)。
+
+### 落地步骤
+
+1. 一次把每个工程接上（已有配置不覆盖），并在工作区 `doc/` 放编排脚本、登记表模板与 `AGENTS.md` 片段：
+   ```powershell
+   node <skill>/scripts/install.mjs --workspace <工作区>
+   ```
+2. 逐工程改各自的 `doc/codemap.config.json`：`roots` / `extensions` 按该工程的语言定，`modules` 按该工程的业务切（不同工程不必一致）。
+3. 改 `doc/codemap-workspace.json`：`projects`（名字 + 相对路径）、`shared`（人工确认的共用头文件）、`indexFile`。省略该文件时会自动发现「含 `doc/codemap.config.json` 的一级子目录」。
+4. 生成登记表：`node doc/codemap-workspace.mjs build`。产物 `doc/CODE_MAP_INDEX.md` 只有一张工程表（目录、索引根、文件/符号/诊断数、地图入口），供 Agent 先挑工程。
+5. 接线根 `AGENTS.md`：用 `templates/AGENTS.section.workspace.md`。
+
+### 编排脚本的语义
+
+| 命令 | 行为 |
+| --- | --- |
+| `build` | 依次在**每个工程目录内**跑它自己的 `doc/codemap.mjs`（保留各自的增量缓存），再重写根登记表；有工程失败则退出码 1（`--allow-missing` 可放行未接入的工程） |
+| `check` | 对每个工程跑 `--check`，任一漂移或报错即退出码 1；适合放 CI / 提交前 |
+| `find <名字>` | **只读**各工程 `doc/.codemap-cache.json` 做符号检索，按工程分组输出 `工程/文件:行号`，不触发任何重新解析 |
+| `list` | 每个工程的 `ok` / `not-built` / `no-generator` 状态 |
+
+### 三条边界
+
+- **不合并地图**：不存在「跨工程枢纽页」，也不做跨工程引用边——两份地图没有共同解析器，连一条边就是猜。
+- **登记表是生成物**：只能由 `codemap-workspace.mjs` 写；不许手改。
+- **隔离**：Agent 在某个工程里干活时，只读该工程自己的 `doc/`；根登记表只用来选工程，不替代工程内导航。
+
 ## 日常维护
 
 - 任何文件增删改后：`node doc/codemap.mjs` → `node doc/codemap.mjs --check`。
+- 多工程工作区：只重跑你改的那个工程；提交前跑 `node doc/codemap-workspace.mjs check`，它会汇总所有工程。
 - 只改一个模块且缓存已热：`--module <名字>`；跨模块或改配置时必须无参数全量。
 - 缓存可随时删；删除后会全量重解析，结果不变。
 - 生成物随代码提交，评审时当作 diff 看；**不要手改**。
@@ -147,6 +181,9 @@ node doc/codemap.mjs                      # 首次全量生成
 | 枢纽排名反直觉 | 入度只统计导入；外部 crate 与同名歧义不计 | 看 `edges` 三个计数；必要时在 `CODE_MAP.md` 写明局限 |
 | 诊断数突增 | 新语法超出语法快照（如 async 闭包、`&raw` 借用） | 更新基线并在汇报中说明；不要手改页面 |
 | 非 git 目录漏文件 | 遍历受 `excludeSegments` 限制 | 检查排除段是否误伤 |
+| `build` 报 `fail <工程> no-generator` | 该工程没装生成器 | `--workspace` 重跑一次，或 `--project <工程>` |
+| `build` 提示 `parsed nothing`（`files=0`） | 该工程的 `roots`/`extensions` 与语言不符 | 改该工程的 `doc/codemap.config.json` |
+| 登记表里缺某个工程 | 没写进 `codemap-workspace.json`，该工程也还没有配置文件 | 补 `projects`，或先给它 `--project` 接入后重跑 `build` |
 
 ## 设计约束（改生成器时守住）
 

@@ -4,7 +4,7 @@
 
 | 技能 | 作用 |
 | --- | --- |
-| [`code-map`](code-map/) | 给任意仓库建立确定性代码地图：符号索引 + 导入级引用图 + 枢纽排序，配 `--find` / `--outline` / `--map` / `--check` CLI |
+| [`code-map`](code-map/) | 给任意仓库建立确定性代码地图：符号索引 + 导入级引用图 + 枢纽排序，配 `--find` / `--outline` / `--map` / `--check` CLI；一个目录多个工程时每个工程各生成一份，根目录只留一张登记表（`codemap-workspace.mjs`） |
 | [`agent-scaffold`](agent-scaffold/) | 给工程/工作区搭路由式 Agent 文件体系：≤60 行 `AGENTS.md` 路由 + `agent/` 索引、8 条规则、5 个阶段 playbook（创建/实现/调试/优化/归档）、调研与归档索引、多工程隔离；新工程 `init`、旧工程 `migrate audit→plan→apply` 后 `adopt`（只注入 marker 区块，既有文档零改动）、`extend` 把用户新规则固化成文件、`verify`、`uninstall` |
 | [`skill-author`](skill-author/) | 按本仓库约定生成与校验新技能目录：目录名对齐 frontmatter `name`、自包含检查、README 技能表登记 |
 
@@ -18,6 +18,7 @@
 node code-map/scripts/install.mjs --all-agents        # 各 Agent 的 skills 目录
 node code-map/scripts/install.mjs --library           # magpie 库
 node code-map/scripts/install.mjs --project D:\proj   # 只把生成器 + 配置模板放进项目 doc/
+node code-map/scripts/install.mjs --workspace D:\ws   # 多工程：装每个工程 + 在工作区 doc/ 放登记表脚本
 node code-map/scripts/install.mjs --list --dry-run    # 看会写到哪里
 ```
 
