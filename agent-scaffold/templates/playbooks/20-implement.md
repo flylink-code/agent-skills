@@ -44,7 +44,7 @@ node doc/codemap.mjs --outline <文件>   # 文件结构
 - 跟随既有风格，不引入新的范式。
 - 边界条件先写（空、超时、断电、越界）。
 - 日志留在能定位问题的粒度：入口、异常分支、状态跃迁。
-- 写给最终读者：UI 文案面向用户，注释面向维护者，**不写**「按你的要求」「用户要的」（`agent/rules/15-audience.md`）。
+- 写给最终读者：UI 文案面向用户，注释面向维护者，不留对话痕迹（`agent/rules/15-audience.md`）。
 - 不在这一步顺手改无关代码。
 
 ### Step 5: 验
@@ -63,7 +63,7 @@ node doc/codemap.mjs --outline <文件>   # 文件结构
 
 ### Step 7: 更新
 
-- `agent/context/plan.md`：完成项移到已完成，写新的下一步
+- `agent/context/plan.md`：完成项移出（删掉或进归档，不留在计划里），写新的下一步 ≥3 条
 - `agent/context/software.md`：接口/模块变化
 - `agent/context/decisions.md`：重大取舍
 

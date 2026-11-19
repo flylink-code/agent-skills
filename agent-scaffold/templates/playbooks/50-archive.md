@@ -53,7 +53,7 @@ frontmatter：`status: archived`、`archived:`、`commit:`、`superseded_by:`、
 | --- | --- |
 | `agent/context/plan.md` | 删已完成项，保留下一步 |
 | `agent/index.md` | 移除已失效触发条件 |
-| `agent/AGENTS.md` | 若某条已固化成规则并长期有效，移出路由噪音 |
+| `AGENTS.md` | 若某条已固化成规则并长期有效，移出路由噪音 |
 | `agent/context/software.md` | 更新为当前真实状态 |
 
 **不清理 = 下次又被排进待办 = 归档白做。**

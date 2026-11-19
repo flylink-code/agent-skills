@@ -9,6 +9,8 @@
 
 ## 状态说明
 
+取值定义见 `agent/rules/30-docs.md`「状态声明」，这里只讲调研特有的两种：
+
 - `active`：结论仍适用
 - `stale`：超过 12 个月未复核，或依赖的版本已变，引用前须复核
 - `superseded`：被新调研取代，读 `superseded_by`

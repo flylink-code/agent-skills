@@ -38,8 +38,8 @@ description: >-
 | 索引层 | `agent/index.md` | ≤ 120 行 | 新增能力时 |
 | 内容层 | `agent/rules/*`、`playbooks/*`、`context/*` | 单文件 ≤ 200 行 | 高频 |
 
-依据：Anthropic 官方建议 `CLAUDE.md` **under 200 lines**（更长遵守率会降，上下文越长召回越差）；60 行是本体系更严的**路由预算**，不是行业标准，200 行是官方数字。
-`AGENTS.md` 规范本身（agents.md）没有字段或行数要求，所以这条预算纯属工程取舍。
+依据（2026-11 复核）：Anthropic 对 CLAUDE.md 的要求是 *target under 200 lines* ——「Longer files consume more context and reduce adherence」（`code.claude.com/docs/en/memory`）；
+`AGENTS.md` 规范（agents.md）明说没有必填字段、就是普通 Markdown，也没有行数要求。所以 200 是外部建议，60 是本体系自定的**路由预算**。
 
 ## 生成的目录
 
@@ -76,11 +76,8 @@ agent/
 
 ## 行为约束的落点（v2.1 起，源自 GPT-6.2 官方提示词）
 
-「说人话、答复自包含、长任务不中途停、不明确就假设推进」这四条**每轮都要守**，所以拆两处放：
-`AGENTS.md` 的「每轮必守」留浓缩版（常驻、在预算内），完整版在 `agent/rules/00-global.md`
-（路由条件就是「任何回答」，实际每轮命中）；产物侧的措辞归 `rules/15-audience.md`。
-
-它与「每轮给 ≥3 条下一步」的张力有一条判定：**能自己做的先做完**，只有需要用户裁决的才进「未决项」。
+四条（说人话、答复自包含、长任务不停、不明确就假设推进）每轮都要守，所以拆两份：`AGENTS.md` 留浓缩版，
+`rules/00-global.md` 放完整版（路由条件本就是「任何回答」）。与「≥3 条下一步」的张力：能自己做的先做完。
 
 ## 工作流程
 
@@ -143,16 +140,14 @@ node <skill>/scripts/scaffold.mjs adopt <目录>
 
 ### Step 5 · 填充事实卡（只写指针，不搬正文）
 
-```markdown
-## 事实源
-- 需求 v2.3：`docs/req/需求_v2.3.docx`（唯一有效版本，v2.2 已作废）
-## 当前结论
-- 采样率 600 Mbps；AC 本期不做。
-## 未决项
-- DQ 收尾兜底策略未定（见 `agent/rules/40-debug.md`）
-## 最后更新
-- 2026-11-12 / 谁更新的
-```
+四段固定，示例与写法在 `agent/rules/30-docs.md`（`verify` 会查「事实源」段里有没有可点路径）：
+
+| 段 | 写什么 |
+| --- | --- |
+| `## 事实源` | 文件指针 + 哪个版本有效、哪个已作废 |
+| `## 当前结论` | 结论 + 证据等级 |
+| `## 未决项` | 卡在哪、谁来裁决 |
+| `## 最后更新` | 日期 / 更新人 |
 
 `plan.md` 写清：现在在哪个阶段、卡在哪、上一步结论、下一步三条。
 这三张卡是「事实源指针」，不是正文副本 —— 正文会过期，链接不会。
@@ -167,6 +162,7 @@ node <skill>/scripts/scaffold.mjs uninstall <目录> --dry-run
 `verify` 检查：marker 成对唯一、各文件行数预算、事实卡有「事实源」且含可点击路径、
 `status` frontmatter 存在、归档与调研索引存在、manifest hash 一致、代码地图是否就位。
 `uninstall` 只删 manifest 记录且 hash 未变的文件，只剥 marker 区块；手工改过的保留并报告。
+结构之外它管不了：规则「过时 / 互相矛盾」要靠人审，或跑 Claude Code 的 `/doctor prompt-audit`（v2.1.283+，覆盖 CLAUDE.md、AGENTS.md 与规则目录）。
 
 老工程要吃到新版规则：先 `verify` 看哪些受管文件被手改过，再 `init <目录> --force`（逐文件备份 `.bak`；`AGENTS.md` 由本工具创建的按模板刷新，adopt 进来的只替换 marker 区块）。
 

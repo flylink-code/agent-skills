@@ -142,7 +142,9 @@ function saveManifest(root, m) {
 /** 在指定 ## 小节的表格末尾追加一行 */
 function addRowToSection(text, heading, row) {
   const lines = text.split(/\r?\n/);
-  const h = lines.findIndex((l) => l.trim() === heading);
+  /** 标题常带补充说明（「（约束，不是流程）」这类），比对时统一剥掉括号部分，避免措辞微调就找不到小节 */
+  const norm = (s) => s.trim().replace(/[（(].*$/, '').trim();
+  const h = lines.findIndex((l) => l.trim() === heading || norm(l) === norm(heading));
   if (h === -1) return { ok: false, reason: `找不到小节 ${heading}` };
   let i = h + 1;
   while (i < lines.length && !lines[i].trim().startsWith('|')) {
@@ -424,9 +426,10 @@ ${body || '（待补充：具体约束、判定标准）'}
 
 - **决定**：把「${title}」固化为 \`${rel}\`
 - **上下文**：${body || '用户要求'}
-- **放弃的方案 / 代价**：写在临时口头约定里，下个会话即丢失
-- **影响面**：所有读取 agent/rules 的会话
-- **可逆性**：可逆（删文件 + 撤销索引行）
+- **为什么**：写在临时口头约定里，下个会话即丢失
+- **放弃的方案 / 代价**：不落文件、只靠对话提醒
+- **后果**：所有读取 agent/rules 的会话都受这条约束
+- **可逆性**：可逆（删文件 + 撤销 index 行）
 - **成文位置**：定稿后搬进 \`docs/adr/NNNN-<slug>.md\`，这里留一行
 - **状态**：active
 `;

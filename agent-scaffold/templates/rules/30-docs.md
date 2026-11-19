@@ -28,7 +28,7 @@
 
 ## 摘要卡规则（`agent/context/*.md`）
 
-固定四段，缺一段即不合规：
+摘要卡固定四段（事实源 / 当前结论 / 未决项 / 最后更新），缺一段即不合规（与 `rules/00-global.md` 的「回答四段」不是一回事）：
 
 ```markdown
 ## 事实源
@@ -49,18 +49,21 @@
 
 ```yaml
 ---
-status: active | resolved | superseded | archived
+status: active | stale | resolved | superseded | archived
 updated: 2026-11-12
 verified: false
 supersedes: []
 ---
 ```
 
+取值：`active` 有效 / `stale` 需复核（超期或依赖版本已变）/ `resolved` 已解决 / `superseded` 被取代 / `archived` 已归档。
+`workaround` **不是** status 值，是标记（见 `rules/60-archive.md`），两套词别混用。
+
 没有 `status` 的文档，Agent 默认按 `active` 处理，但**不得**作为唯一依据——先确认再引用。
 
 ## 写文档的通用要求
 
-- 先给结论，再给依据。
+- 先给结论，再给依据（同 `rules/00-global.md`「语言与写作」，那里是通则，这里是文档侧）。
 - 每段都有明确读者：写给使用者、维护者或评审者，不写给请求者（`agent/rules/15-audience.md`）。
 - 数字带单位与口径（600 Mbps 是链路速率还是采样率？）。
 - 时间用绝对日期（2026-11-12），不用「上周」。
