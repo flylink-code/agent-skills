@@ -54,7 +54,7 @@ node <skill>/scripts/install.mjs --all-agents         # 更新各 Agent 的 skil
 
 一个目录下有多个工程时，给每个工程各装一份（`--project` 逐个，或用 `--workspace <工作区>` 一次装完），**不要**把多个工程塞进同一份 `roots`，见「多工程工作区」一节。
 
-依赖三个包：`typescript`、`web-tree-sitter`、`tree-sitter-wasms`。解析顺序：脚本目录 → `CODEMAP_REQUIRE_FROM`（目录或 `package.json`）→ 同级 `../Ai-Switcher`、`../magpie`。新项目建议自足：
+依赖三个包：`typescript`、`web-tree-sitter`、`tree-sitter-wasms`。解析顺序：脚本所在目录 → 项目根 → `CODEMAP_REQUIRE_FROM`（目录或 `package.json`）→ `CODEMAP_SIBLINGS`（逗号分隔的额外目录，用来复用本机已有安装）。新项目建议自足：
 
 ```powershell
 pnpm add -D typescript web-tree-sitter tree-sitter-wasms
@@ -108,6 +108,8 @@ node doc/codemap.mjs                      # 首次全量生成
 
 首次生成输出一行 JSON：`files / symbols / diagnostics / parsed / changed / pages / edges{resolved,ambiguous,unresolved}`。把这组数字记下来，写进 `CODE_MAP.md` 的"已知基线"。
 
+selftest 与生成器用同一套依赖解析，缺包时以退出码 2 提示——先完成 Step 2 的安装再跑它。
+
 ### Step 5: 验收（缺一不可）
 
 1. `node doc/codemap.mjs` 再跑一次：`changed=0`、`deleted=0`（幂等）。
@@ -135,10 +137,11 @@ node doc/codemap.mjs                      # 首次全量生成
 
 ### 落地步骤
 
-1. 一次把每个工程接上（已有配置不覆盖），并在工作区 `doc/` 放编排脚本、登记表模板与 `AGENTS.md` 片段：
+1. 一次把每个工程接上（已有配置不覆盖），并在工作区 `doc/` 放编排脚本、登记表与 `AGENTS.md` 片段：
    ```powershell
    node <skill>/scripts/install.mjs --workspace <工作区>
    ```
+   工作区还没有 `doc/codemap-workspace.json` 时，会把「看起来是工程」的一级子目录（有 `.git` / `src/` / `package.json` / `Cargo.toml` 等）全部接上，并据此写一份登记表；已有登记表时只装表里列出的工程，未登记的目录会被列出来提醒。
 2. 逐工程改各自的 `doc/codemap.config.json`：`roots` / `extensions` 按该工程的语言定，`modules` 按该工程的业务切（不同工程不必一致）。
 3. 改 `doc/codemap-workspace.json`：`projects`（名字 + 相对路径）、`shared`（人工确认的共用头文件）、`indexFile`。省略该文件时会自动发现「含 `doc/codemap.config.json` 的一级子目录」。
 4. 生成登记表：`node doc/codemap-workspace.mjs build`。产物 `doc/CODE_MAP_INDEX.md` 只有一张工程表（目录、索引根、文件/符号/诊断数、地图入口），供 Agent 先挑工程。
@@ -164,6 +167,7 @@ node doc/codemap.mjs                      # 首次全量生成
 - 任何文件增删改后：`node doc/codemap.mjs` → `node doc/codemap.mjs --check`。
 - 多工程工作区：只重跑你改的那个工程；提交前跑 `node doc/codemap-workspace.mjs check`，它会汇总所有工程。
 - 只改一个模块且缓存已热：`--module <名字>`；跨模块或改配置时必须无参数全量。
+- 机器可读输出：`--find` / `--outline` 加 `--json`；`--map --tokens N` 控制概览预算（默认约 40 条枢纽）。
 - 缓存可随时删；删除后会全量重解析，结果不变。
 - 生成物随代码提交，评审时当作 diff 看；**不要手改**。
 - 升级生成器后先删缓存再生成（缓存带脚本指纹，通常会自动失效）。

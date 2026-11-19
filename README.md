@@ -8,11 +8,19 @@
 | [`agent-scaffold`](agent-scaffold/) | 给工程/工作区搭路由式 Agent 文件体系：≤60 行 `AGENTS.md` 路由 + `agent/` 索引、9 条规则（写作与措辞、答复自包含、推进与停止、受众与措辞、证据分级等，对齐 GPT-6.2 官方提示词）、5 个阶段 playbook（创建/实现/调试/优化/归档）、调研与归档索引、多工程隔离；新工程 `init`、旧工程 `migrate audit→plan→apply` 后 `adopt`（只注入 marker 区块，既有文档零改动）、`extend` 把用户新规则固化成文件、`verify`、`uninstall` |
 | [`skill-author`](skill-author/) | 按本仓库约定生成与校验新技能目录：目录名对齐 frontmatter `name`、自包含检查、README 技能表登记 |
 
-## 安装（magpie）
+## 安装
 
-在 Library 页添加本仓库，路径填技能目录名（例如 `code-map`），勾选要让哪些 Agent 使用；之后用 `magpie library skill update code-map` 拉更新。
+三个技能的装法不一样，别混：
 
-## 从源码安装
+| 技能 | 怎么装 |
+| --- | --- |
+| `code-map` | **有安装脚本**（它会往项目 `doc/` 写生成器，需要精确投递），见下方命令 |
+| `agent-scaffold` | 无脚本：整个目录复制/链接到目标 skills 目录即可；它在被你调用的目录里生成文件，不碰技能自身 |
+| `skill-author` | 同上，整目录复制（纯 Node，无依赖） |
+
+magpie 库里的更新：`magpie library skill update <技能名>`；手工维护的副本用 `node code-map/scripts/install.mjs --library` 对齐 `code-map`。
+
+## 从源码安装 code-map
 
 ```powershell
 node code-map/scripts/install.mjs --all-agents        # 各 Agent 的 skills 目录

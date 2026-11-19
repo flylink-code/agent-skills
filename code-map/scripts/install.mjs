@@ -153,20 +153,62 @@ function discoverProjects(root) {
     .filter(project => fs.existsSync(path.join(project, 'doc', 'codemap.config.json')));
 }
 
+// A folder that is already wired, or that looks like a project on its own. Used
+// only when the workspace has no registry yet, so a fresh folder can be set up
+// in one pass instead of one --project call per repository.
+const PROJECT_MARKERS = ['package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml', 'Makefile', 'CMakeLists.txt'];
+
+const looksLikeProject = dir =>
+  fs.existsSync(path.join(dir, '.git')) ||
+  fs.existsSync(path.join(dir, 'src')) ||
+  PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)));
+
+function discoverCandidates(root) {
+  return fs.readdirSync(root, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && !entry.name.startsWith('.') && !['doc', 'node_modules', 'target', 'dist', 'build'].includes(entry.name))
+    .map(entry => path.join(root, entry.name))
+    .filter(project => fs.existsSync(path.join(project, 'doc', 'codemap.config.json')) || looksLikeProject(project));
+}
+
+function writeRegistry(root, projects) {
+  const file = path.join(root, 'doc', 'codemap-workspace.json');
+  if (fs.existsSync(file)) return;
+  const registry = {
+    projects: projects.map(project => ({
+      name: path.basename(project),
+      path: path.relative(root, project).split(path.sep).join('/'),
+    })),
+    shared: [],
+    indexFile: 'doc/CODE_MAP_INDEX.md',
+  };
+  console.log(`${options.dryRun ? 'would write' : 'wrote'}     ${file}  (${registry.projects.length} project(s); rename the labels if you like)`);
+  if (!options.dryRun) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, `${JSON.stringify(registry, null, 2)}\n`, 'utf8');
+  }
+}
+
 function installWorkspace(workspace) {
   const root = path.resolve(workspace);
   const config = readWorkspaceConfig(root);
-  const declared = config ? config.map(entry => path.resolve(root, entry.path)) : discoverProjects(root);
+  const declared = config ? config.map(entry => path.resolve(root, entry.path)) : discoverCandidates(root);
   const projects = declared.filter(project => fs.existsSync(project));
   for (const missing of declared.filter(project => !fs.existsSync(project))) {
     console.log(`skipped   ${missing}  (declared in codemap-workspace.json but missing)`);
+  }
+  if (config) {
+    for (const candidate of discoverCandidates(root)) {
+      if (declared.includes(candidate)) continue;
+      console.log(`not registered  ${candidate}  (add it to doc/codemap-workspace.json or run --project <dir>)`);
+    }
   }
   console.log(`${config ? 'config' : 'discovered'}  ${projects.length} project(s) under ${root}`);
   if (!projects.length) console.log('          add projects to doc/codemap-workspace.json, or run --project <dir> for each');
   for (const project of projects) installProject(project);
   const doc = path.join(root, 'doc');
   copyInto(path.join(repo, 'scripts', 'codemap-workspace.mjs'), path.join(doc, 'codemap-workspace.mjs'), true);
-  copyInto(path.join(repo, 'templates', 'codemap-workspace.json'), path.join(doc, 'codemap-workspace.json'), false, ' (registry config exists; left as it is)');
+  if (projects.length && !config) writeRegistry(root, projects);
+  else copyInto(path.join(repo, 'templates', 'codemap-workspace.json'), path.join(doc, 'codemap-workspace.json'), false, ' (registry config exists; left as it is)');
   copyInto(path.join(repo, 'templates', 'AGENTS.section.workspace.md'), path.join(doc, 'AGENTS.section.workspace.md'), true);
   console.log(`next      edit ${path.join(doc, 'codemap-workspace.json')}, then run node doc/codemap-workspace.mjs build`);
 }

@@ -173,6 +173,22 @@ function check(root) {
 
   const readme = readIf(path.join(root, 'README.md')) || '';
 
+  // 有内容却没有 SKILL.md 的目录：通常是把技能写漏了，check 不该静默放过
+  const orphans = fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
+    .map((e) => e.name)
+    .filter((n) => !fs.existsSync(path.join(root, n, 'SKILL.md')));
+  for (const name of orphans) {
+    const inside = fs.readdirSync(path.join(root, name)).filter((f) => !f.startsWith('.'));
+    if (!inside.length) continue;
+    warn(`${name}/ 没有 SKILL.md，不会被当成技能：补一个，或把该目录移出仓库`);
+    warns++;
+  }
+
+  /** 触发关键词：description 要写清「什么时候用」，否则模型不会命中 */
+  const TRIGGER_RE = /Use when|When the user|当用户|当需要|asks to|适用于/;
+
   for (const name of dirs) {
     const dir = path.join(root, name);
     const text = readIf(path.join(dir, 'SKILL.md')) || '';
@@ -193,6 +209,9 @@ function check(root) {
     if (!fm.description || fm.description.length < 10) {
       bad(`${name}: description 太短（要写「作用 + 什么时候用」）`);
       errs++;
+    } else if (!TRIGGER_RE.test(fm.description)) {
+      warn(`${name}: description 里没有触发关键词（Use when / 当用户…），模型可能想不起来用它`);
+      warns++;
     }
     const lines = text.replace(/\n+$/, '').split(/\r?\n/).length;
     if (lines > BODY_WARN_LINES) {

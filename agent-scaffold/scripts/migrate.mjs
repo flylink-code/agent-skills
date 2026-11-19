@@ -419,10 +419,10 @@ function apply(root, opts) {
   head('完成');
   info(`已移动 ${moved}，已标注 ${annotated}${opts.dryRun ? '（dry-run，未落盘）' : ''}`);
   if (kit) {
-    info(`下一步（本命令不代跑）：node scaffold.mjs ${kit.cmd} ${root}`);
+    info(`下一步（本命令不代跑）：node "${path.join(import.meta.dirname, 'scaffold.mjs')}" ${kit.cmd} ${root}`);
   }
   const cm = actions.find((a) => a.type === 'codemap');
-  if (cm) info(`下一步：用 code-map skill 生成 ${'doc/CODE_MAP_INDEX.md'}`);
+  if (cm) info('下一步：用 code-map skill 生成 doc/CODE_MAP_INDEX.md');
   if (!opts.dryRun && !opts.noBranch) {
     info(`分支：${branch}；确认无误后合回，回滚用 git checkout ${base} && git branch -D ${branch}`);
   }

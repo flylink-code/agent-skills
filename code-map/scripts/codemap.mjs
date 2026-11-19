@@ -14,7 +14,8 @@ const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 const rel = file => file.split('\\').join('/');
 
 // Dependencies are resolved from the workspace first, then from CODEMAP_REQUIRE_FROM,
-// then from the sibling installs that share this machine. Nothing is installed here.
+// then from the directories listed in CODEMAP_SIBLINGS (extra installs that share
+// this machine). Nothing is installed here.
 const requireScopes = [];
 const addScope = candidate => {
   if (!candidate) return;
@@ -30,9 +31,15 @@ addScope(scriptDir);
 addScope(path.resolve(scriptDir, '..'));
 addScope(path.resolve(scriptDir, '..', '..'));
 if (process.env.CODEMAP_REQUIRE_FROM) addScope(path.resolve(process.env.CODEMAP_REQUIRE_FROM));
-for (const sibling of ['Ai-Switcher', 'magpie']) {
-  addScope(path.resolve(scriptDir, '..', '..', sibling));
-  addScope(path.resolve(scriptDir, '..', sibling));
+for (const sibling of (process.env.CODEMAP_SIBLINGS || '').split(',').map(s => s.trim()).filter(Boolean)) {
+  addScope(path.resolve(sibling));
+}
+// Legacy fallback: two sibling installs that existed on the machine this skill
+// grew up on. Harmless elsewhere (missing paths are skipped) and kept so those
+// projects keep resolving; new setups should use CODEMAP_SIBLINGS.
+for (const legacy of ['Ai-Switcher', 'magpie']) {
+  addScope(path.resolve(scriptDir, '..', '..', legacy));
+  addScope(path.resolve(scriptDir, '..', legacy));
 }
 requireScopes.push(createRequire(import.meta.url));
 

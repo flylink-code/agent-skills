@@ -66,9 +66,13 @@ node <skill>/scripts/new-skill.mjs check <仓库目录>
 node <skill>/scripts/new-skill.mjs list  <仓库目录>
 ```
 
-`check` 检查：每个技能目录都有 `SKILL.md`；frontmatter `name` 与目录名一致；
-`description` 非空且含触发关键词；仓库根**没有** `SKILL.md`；README 技能表里有对应行；
-`SKILL.md` 行数不超 200（超了给警告而不是报错）。
+`check` 分两级：
+
+- **错误**（退出码 1）：仓库根有 `SKILL.md`；某技能缺 frontmatter / 缺 `name` / `name` 与目录名不一致；
+  `description` 少于 10 字符。
+- **警告**：`description` 里没有触发关键词（`Use when` / `当用户…`）；README 技能表里没有该行；
+  `SKILL.md` 超 200 行（细节挪进 `references/`）；`scripts/` 里混了非脚本文件；
+  某目录有内容却没有 `SKILL.md`（多半是写漏了，不会被当成技能）。
 
 ## 提交前自检
 
