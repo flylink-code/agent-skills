@@ -20,7 +20,8 @@ description: >-
 
 | 症状 | 本体系的对应件 |
 | --- | --- |
-| 模型给个结论就停，把活推回给人 | `agent/rules/00-global.md`（输出四段、不许以「证据不足」收尾） |
+| 模型给个结论就停，把活推回给人 | `rules/00-global.md`「推进与停止」+「输出形状」（固定四段，不许以「证据不足」收尾） |
+| 满口套话、答复像推理笔记，离开前面的播报就读不懂 | `rules/00-global.md`「语言与写作」「答复自包含」（为读者重写，不复用推理简写） |
 | 只说「根因未定」，不给可执行的下一步 | `agent/rules/40-debug.md` + `playbooks/30-debug.md` |
 | 新会话重复做已经做完的事 | `agent/context/archive/ARCHIVE_INDEX.md` + `rules/60-archive.md` |
 | 引用几个月前的结论当现状 | 文档 `status` 字段 + 归档卡「失效条件」 |
@@ -37,9 +38,8 @@ description: >-
 | 索引层 | `agent/index.md` | ≤ 120 行 | 新增能力时 |
 | 内容层 | `agent/rules/*`、`playbooks/*`、`context/*` | 单文件 ≤ 200 行 | 高频 |
 
-依据：Anthropic 官方对 `CLAUDE.md` 的建议是 **under 200 lines**（更长会降低遵守率），
-且上下文越长召回越差（context rot）。60 行是本体系更严的**路由预算**，不是行业标准；
-200 行是官方数字，别超过。`AGENTS.md` 规范本身（agents.md）没有任何字段或行数要求。
+依据：Anthropic 官方建议 `CLAUDE.md` **under 200 lines**（更长遵守率会降，上下文越长召回越差）；60 行是本体系更严的**路由预算**，不是行业标准，200 行是官方数字。
+`AGENTS.md` 规范本身（agents.md）没有字段或行数要求，所以这条预算纯属工程取舍。
 
 ## 生成的目录
 
@@ -48,7 +48,7 @@ AGENTS.md                     # 路由层（≤60 行）
 agent/
   index.md                    # 索引层：触发条件 → 文件
   rules/                      # 约束
-    00-global.md              #   语言、证据分级、输出形状、什么值得写进 agent 文件
+    00-global.md              #   写作与措辞、答复自包含、推进与停止、证据分级、输出形状
     10-code.md                #   改代码纪律
     15-audience.md            #   受众与措辞：UI 文案、注释、TODO 写给谁；对话痕迹不进产物
     20-git.md                 #   提交、分支、回滚
@@ -73,6 +73,14 @@ agent/
 工作区模式（`--mode workspace`）把 `AGENTS.md` 换成工作区路由（含工程一览表），
 `projects/` 下每个子目录各自再跑一次工程级 `init`。**代码地图不在这里**：
 沿用 `code-map` 的 `doc/CODE_MAP_INDEX.md` 契约，避免两套地图漂移。
+
+## 行为约束的落点（v2.1 起，源自 GPT-6.2 官方提示词）
+
+「说人话、答复自包含、长任务不中途停、不明确就假设推进」这四条**每轮都要守**，所以拆两处放：
+`AGENTS.md` 的「每轮必守」留浓缩版（常驻、在预算内），完整版在 `agent/rules/00-global.md`
+（路由条件就是「任何回答」，实际每轮命中）；产物侧的措辞归 `rules/15-audience.md`。
+
+它与「每轮给 ≥3 条下一步」的张力有一条判定：**能自己做的先做完**，只有需要用户裁决的才进「未决项」。
 
 ## 工作流程
 
@@ -160,6 +168,8 @@ node <skill>/scripts/scaffold.mjs uninstall <目录> --dry-run
 `status` frontmatter 存在、归档与调研索引存在、manifest hash 一致、代码地图是否就位。
 `uninstall` 只删 manifest 记录且 hash 未变的文件，只剥 marker 区块；手工改过的保留并报告。
 
+老工程要吃到新版规则：先 `verify` 看哪些受管文件被手改过，再 `init <目录> --force`（逐文件备份 `.bak`；`AGENTS.md` 由本工具创建的按模板刷新，adopt 进来的只替换 marker 区块）。
+
 ## 把用户的新想法固化进体系
 
 用户随时会说「再加一条规则」「这里要这样」。**不要手改模板，也不要只改一个文件**：
@@ -176,10 +186,8 @@ node <skill>/scripts/scaffold.mjs extend <目录> --title "日志必须带时间
 
 ## 阶段与规则的接线
 
-- 阶段：`create → implement → debug → optimize → archive`，对应 `playbooks/10~50-*.md`。
-- 规则：语言/证据分级、代码、受众与措辞、git、文档、调试、调研、归档、隔离，对应 `rules/00~70-*.md`。
-- 归档不是终点：`ARCHIVE_INDEX.md` 里每条必须有**状态 + 失效条件**，
-  `workaround` 不得标成已修复 —— 否则下一个 agent 会把已绕过的问题当已解决。
+- 阶段 `playbooks/10~50-*.md` 与规则 `rules/00~70-*.md` 一一对应，编号不跨层复用。
+- 归档不是终点：每条必须有**状态 + 失效条件**；`workaround` 不得标成已修复 —— 否则下一个 agent 会把已绕过的问题当已解决。
 - 需求/选型必须先查本地、再上网；采信标准见 `rules/50-research.md`（官方文档 > 有署名工程博客 > 论坛）。
 
 ## 反模式

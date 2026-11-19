@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const TEMPLATES = path.resolve(HERE, '..', 'templates');
-const KIT_VERSION = '2.0.0';
+const KIT_VERSION = '2.1.0';
 
 const BEGIN = '<!-- agent-kit:begin -->';
 const END = '<!-- agent-kit:end -->';
@@ -86,7 +86,7 @@ function markerBlock(mode) {
     '',
     '- 会话开始先读 `agent/context/plan.md`；疑似做过的事先查 `agent/context/archive/ARCHIVE_INDEX.md`',
     '- 阶段流程：`agent/playbooks/10-create.md` … `50-archive.md`',
-    '- 约束规则：`agent/rules/00-global.md` … `70-isolation.md`',
+    '- 约束规则：`agent/rules/00-global.md`（写作 / 答复自包含 / 推进与停止）… `70-isolation.md`',
     '- 事实卡：`agent/context/`（需求 / 硬件 / 软件 / 计划 / 决策）',
     '- 需求与选型调研：`agent/rules/50-research.md`',
     ...(ws ? ['- 多工程隔离：`agent/rules/70-isolation.md`（默认只读他工程）'] : []),
@@ -252,6 +252,11 @@ function install(root, { mode, name, force, dryRun }) {
 
     if (f.special === 'agents') {
       const cur = readIf(destAbs);
+      const trackedHash = manifest.files[f.dest];
+      const createdByUs = manifest.agentsMdMode === 'created';
+      /** 上次由本工具创建、且至今没被手改：内容就是模板，不该再叠一层 marker 区块 */
+      const untouchedTemplate = createdByUs && cur !== null && !!trackedHash && sha256(Buffer.from(cur)) === trackedHash;
+
       if (cur === null) {
         const body = render(tpl, projName);
         if (!dryRun) {
@@ -261,6 +266,23 @@ function install(root, { mode, name, force, dryRun }) {
         manifest.agentsMdMode = 'created';
         manifest.files[f.dest] = sha256(Buffer.from(body));
         ok(`创建 ${f.dest}（${lineCount(body)} 行）`);
+        writes++;
+      } else if (createdByUs) {
+        /** 本工具创建的模板文件：绝不再叠 marker（会与既有路由重复）；--force 时备份后按模板刷新 */
+        if (!force) {
+          info(`${f.dest} 由本工具创建${untouchedTemplate ? '且未手改' : '后被手改'}，跳过（要按当前模板刷新用 --force，会先备份 .bak）`);
+          manifest.agentsMdMode = 'created';
+          skips++;
+          continue;
+        }
+        const bak = destAbs + '.bak';
+        if (!dryRun) fs.copyFileSync(destAbs, bak);
+        warn(`已备份 → ${path.relative(root, bak)}`);
+        const body = render(tpl, projName);
+        if (!dryRun) fs.writeFileSync(destAbs, body, 'utf8');
+        manifest.agentsMdMode = 'created';
+        manifest.files[f.dest] = sha256(Buffer.from(body));
+        ok(`按模板刷新 ${f.dest}（${lineCount(cur)} → ${lineCount(body)} 行）`);
         writes++;
       } else {
         const r = upsertMarker(cur, markerBlock(mode));
@@ -419,11 +441,14 @@ ${body || '（待补充：具体约束、判定标准）'}
   if (agents) {
     const r = addRowToSection(agents, '## 2. 规则路由（约束，不是流程）', `| ${title} | \`${rel}\` |`);
     if (r.ok) {
-      if (!dryRun) fs.writeFileSync(agentsPath, r.text, 'utf8');
-      ok('AGENTS.md 路由表已加一行');
-      touched.push('AGENTS.md');
       const n = lineCount(r.text);
-      if (n > BUDGET.AGENTS_MD) warn(`AGENTS.md 现在 ${n} 行 > ${BUDGET.AGENTS_MD}，考虑把旧条目移进 index.md`);
+      if (n > BUDGET.AGENTS_MD) {
+        warn(`AGENTS.md 加这行会到 ${n} 行 > ${BUDGET.AGENTS_MD} 行预算：不加（规则已登记在 agent/index.md），需要时先减旧行`);
+      } else {
+        if (!dryRun) fs.writeFileSync(agentsPath, r.text, 'utf8');
+        ok('AGENTS.md 路由表已加一行');
+        touched.push('AGENTS.md');
+      }
     } else if (agents.includes(BEGIN) && agents.includes(END)) {
       const line = `- 规则：${title} → \`${rel}\``;
       const noteRe = /^本节由 agent-scaffold.*$/m;
@@ -489,6 +514,11 @@ function verify(root) {
       errs++;
     } else {
       ok(`marker 成对 · AGENTS.md ${lineCount(agents)} 行`);
+    }
+    /** 旧版 init 会把模板再叠一层 marker，这里兜底识别 */
+    if (begin > 0 && /每次会话先做三件事/.test(agents)) {
+      warn('AGENTS.md 既有完整路由模板又叠加了 marker 区块（疑似重复生成）：两份保留一份即可');
+      warns++;
     }
     if (m && m.agentsMdMode === 'created' && lineCount(agents) > BUDGET.AGENTS_MD) {
       warn(`AGENTS.md ${lineCount(agents)} 行 > ${BUDGET.AGENTS_MD} 行路由预算：把细条目移进 agent/index.md`);

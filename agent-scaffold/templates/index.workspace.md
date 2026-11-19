@@ -22,8 +22,9 @@
 
 | 触发条件 | 文件 |
 | --- | --- |
-| 全局行为 | `agent/rules/00-global.md` |
+| 全局行为（写作与措辞 / 答复自包含 / 推进与停止） | `agent/rules/00-global.md` |
 | 改代码 | `agent/rules/10-code.md` |
+| 文案 / 注释 / 回复措辞写给谁 | `agent/rules/15-audience.md` |
 | 提交 | `agent/rules/20-git.md` |
 | 文档 | `agent/rules/30-docs.md` |
 | 排查 | `agent/rules/40-debug.md` |
