@@ -45,7 +45,7 @@ node <skill>/scripts/new-skill.mjs new <仓库目录> my-skill --desc "一句话
 ```
 
 生成 `my-skill/SKILL.md`（带 frontmatter 与章节骨架）与 `my-skill/scripts/`；
-同时在 README 技能表末尾追加一行。目录已存在时拒绝，不加 `--force` 就不覆盖。
+同时在 README 技能表末尾追加一行。加 `--dry-run` 可预览；覆盖已有技能需要显式 `--force`。
 
 ### Step 3 · 正文该写什么
 

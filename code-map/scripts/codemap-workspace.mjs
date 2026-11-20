@@ -44,7 +44,7 @@ for (let i = 0; i < args.length; i++) {
 const usage = `Usage: node doc/codemap-workspace.mjs [command] [options]
 
   build                 run every project's own doc/codemap.mjs, then rewrite ${defaultIndex}
-  check                 run every project's generator with --check (exit 1 on any drift or error)
+  check                 verify every project and the workspace registry without writing
   find <name>           search symbols in every project cache; no re-parsing
   list                  show each project's map, cache and generator status
 
@@ -118,22 +118,44 @@ function loadRegistry(root) {
   };
 }
 
+// Validate existing links as well as the lexical path: a junction beneath
+// doc/ can otherwise redirect writes outside the project.
+function docPath(root, value) {
+  const relative = path.posix.normalize(slash(value));
+  if (!relative.startsWith('doc/') || !relative.slice(4) || path.win32.isAbsolute(value)) {
+    throw new Error(`Expected a relative path under doc/: ${value}`);
+  }
+  let target = root;
+  for (const part of relative.split('/').filter(Boolean)) {
+    target = path.join(target, part);
+    if (fs.lstatSync(target, { throwIfNoEntry: false })?.isSymbolicLink()) {
+      const doc = path.join(fs.realpathSync(root), 'doc');
+      const physical = path.relative(doc, fs.realpathSync(target));
+      if (physical === '..' || physical.startsWith(`..${path.sep}`) || path.isAbsolute(physical)) {
+        throw new Error(`Symlink points outside doc/: ${target}`);
+      }
+    }
+  }
+  return target;
+}
+
 function projectPaths(root, project) {
   const dir = path.isAbsolute(project.path) ? project.path : path.join(root, ...project.path.split('/'));
   const doc = path.join(dir, 'doc');
   let config = {};
   try {
     config = readJson(path.join(doc, 'codemap.config.json'));
-  } catch {
-    /* A missing or broken config is reported by the generator run, not here. */
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
   }
+  docPath(dir, config.outputDir || 'doc/codemap');
   return {
     dir,
     doc,
     generator: path.join(doc, 'codemap.mjs'),
     config,
-    cache: path.join(dir, ...slash(config.cacheFile || 'doc/.codemap-cache.json').split('/')),
-    index: path.join(dir, ...slash(config.indexFile || defaultIndex).split('/'))
+    cache: docPath(dir, config.cacheFile || 'doc/.codemap-cache.json'),
+    index: docPath(dir, config.indexFile || defaultIndex)
   };
 }
 
@@ -145,16 +167,12 @@ function compactError(text) {
   return named || lines[0] || '';
 }
 
-function runGenerator(root, project, extraArgs) {
-  const paths = projectPaths(root, project);
-  if (!fs.existsSync(paths.generator)) {
-    return { ok: false, status: 'no-generator', error: 'no generator — run install.mjs --project <dir>', stderr: `missing ${slash(path.relative(project.dir, paths.generator))}` };
-  }
+function runGenerator(paths, extraArgs) {
   const run = spawnSync(process.execPath, [paths.generator, ...extraArgs], {
     cwd: paths.dir,
     encoding: 'utf8',
     timeout: 30 * 60 * 1000,
-    env: process.env
+    env: { ...process.env, CODEMAP_CONFIG: path.join(paths.doc, 'codemap.config.json') }
   });
   const stdout = (run.stdout || '').trim();
   const stderr = (run.stderr || '').trim();
@@ -175,9 +193,8 @@ function lastJsonLine(stdout) {
   return null;
 }
 
-function describeProject(root, project) {
-  const paths = projectPaths(root, project);
-  const hasGenerator = fs.existsSync(paths.generator);
+function describeProject(root, project, paths = projectPaths(root, project)) {
+  const hasGenerator = Boolean(fs.lstatSync(paths.generator, { throwIfNoEntry: false }));
   const hasConfig = fs.existsSync(path.join(paths.doc, 'codemap.config.json'));
   const hasCache = fs.existsSync(paths.cache);
   const hasIndex = fs.existsSync(paths.index);
@@ -197,22 +214,23 @@ function describeProject(root, project) {
   };
 }
 
-function build(root, registry) {
+function inspectProjects(root, registry, checking) {
   const results = [];
   for (const project of registry.projects) {
-    const info = describeProject(root, project);
+    const paths = projectPaths(root, project);
+    const info = describeProject(root, project, paths);
     if (!info.hasGenerator) {
       results.push({ ...info, status: 'no-generator', ok: false, error: 'run install.mjs --project <dir>' });
       continue;
     }
-    const run = runGenerator(root, project, []);
+    const run = runGenerator(paths, checking ? ['--check'] : []);
     if (!run.ok) {
       results.push({ ...info, status: run.status, ok: false, error: run.error || compactError(run.stderr) });
       continue;
     }
     const result = lastJsonLine(run.stdout);
-    if (!result) {
-      results.push({ ...info, status: 'error', ok: false, error: `no JSON result from ${info.generatorRel}` });
+    if (!['files', 'symbols', 'diagnostics'].every(key => Number.isSafeInteger(result?.[key]) && result[key] >= 0)) {
+      results.push({ ...info, status: 'error', ok: false, error: `invalid JSON summary from ${info.generatorRel}` });
       continue;
     }
     results.push({
@@ -227,8 +245,13 @@ function build(root, registry) {
     });
   }
 
-  const indexFile = path.join(root, ...registry.indexFile.split('/'));
-  const markdown = renderIndex(results, registry);
+  return results;
+}
+
+function build(root, registry) {
+  const indexFile = docPath(root, registry.indexFile);
+  const results = inspectProjects(root, registry, false);
+  const markdown = renderIndex(results, registry, root, indexFile);
   let written = false;
   const current = fs.existsSync(indexFile) ? fs.readFileSync(indexFile, 'utf8') : null;
   if (current !== markdown) {
@@ -239,7 +262,7 @@ function build(root, registry) {
   return { results, indexFile, written };
 }
 
-function renderIndex(results, registry) {
+function renderIndex(results, registry, root, indexFile) {
   const ok = results.filter(result => result.status === 'ok');
   const totals = ok.reduce((sum, result) => ({
     files: sum.files + (result.files || 0),
@@ -263,8 +286,11 @@ function renderIndex(results, registry) {
   ];
   for (const result of results) {
     const status = result.status === 'ok' ? '' : ` ⚠ ${result.status}`;
-    const entry = result.status === 'ok' ? `[打开](${result.indexRel})` : '-';
-    lines.push(`| ${result.name}${status} | \`${result.path}\` | ${result.roots.join(', ') || '-'} | ${result.files ?? '-'} | ${result.symbols ?? '-'} | ${result.diagnostics ?? '-'} | ${entry} |`);
+    const relative = path.relative(path.dirname(indexFile), path.resolve(root, result.indexRel));
+    const href = slash(relative).split('/').map(part => encodeURIComponent(part).replace(/[()]/g, c => `%${c.charCodeAt(0).toString(16)}`)).join('/');
+    const entry = result.status === 'ok' ? `[打开](${href})` : '-';
+    const cell = text => String(text).replace(/\|/g, '\\|').replace(/[\r\n]+/g, ' ');
+    lines.push(`| ${cell(result.name)}${status} | \`${cell(result.path)}\` | ${cell(result.roots.join(', ') || '-')} | ${result.files ?? '-'} | ${result.symbols ?? '-'} | ${result.diagnostics ?? '-'} | ${entry} |`);
   }
   lines.push('');
   lines.push(`合计：${ok.length}/${results.length} 个工程 / ${totals.files} 文件 / ${totals.symbols} 符号 / ${totals.diagnostics} 诊断。`);
@@ -320,23 +346,22 @@ function find(root, registry, query) {
   for (const group of groups) {
     group.hits = group.hits.slice(0, budget);
     budget -= group.hits.length;
-    if (budget <= 0) break;
   }
   return groups;
 }
 
 function check(root, registry) {
-  const results = [];
-  for (const project of registry.projects) {
-    const info = describeProject(root, project);
-    if (!info.hasGenerator) {
-      results.push({ ...info, status: 'no-generator', ok: false, error: 'no generator — run install.mjs --project <dir>' });
-      continue;
-    }
-    const run = runGenerator(root, project, ['--check']);
-    results.push({ ...info, status: run.ok ? 'ok' : 'drift', ok: run.ok, error: run.ok ? '' : run.error || compactError(run.stderr) });
+  const indexFile = docPath(root, registry.indexFile);
+  const results = inspectProjects(root, registry, true);
+  const markdown = renderIndex(results, registry, root, indexFile);
+  if (!fs.existsSync(indexFile) || fs.readFileSync(indexFile, 'utf8') !== markdown) {
+    results.push({ name: registry.indexFile, status: 'drift', ok: false, error: 'Workspace registry is missing or stale; run build' });
   }
   return results;
+}
+
+function isFailure(result) {
+  return !result.ok && !(options.allowMissing && result.status === 'no-generator');
 }
 
 function list(root, registry) {
@@ -381,7 +406,7 @@ try {
       const results = check(root, registry);
       if (options.json) console.log(JSON.stringify(results, null, 1));
       else for (const result of results) console.log(`${result.ok ? 'ok    ' : 'drift '} ${result.name}${result.ok ? '' : `  ${result.error.split(/\r?\n/)[0]}`}`);
-      if (results.some(result => !result.ok)) process.exitCode = 1;
+      if (results.some(isFailure)) process.exitCode = 1;
     } else {
       const { results, indexFile, written } = build(root, registry);
       if (options.json) console.log(JSON.stringify({ indexFile: slash(path.relative(root, indexFile)), written, projects: results }, null, 1));
@@ -394,8 +419,7 @@ try {
         }
         console.log(`${written ? 'wrote' : 'kept '} ${slash(path.relative(root, indexFile))}`);
       }
-      const failures = results.filter(result => !result.ok);
-      if (failures.length && !options.allowMissing) process.exitCode = 1;
+      if (results.some(isFailure)) process.exitCode = 1;
     }
   }
 } catch (error) {

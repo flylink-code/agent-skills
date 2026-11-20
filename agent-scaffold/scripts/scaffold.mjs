@@ -68,6 +68,12 @@ function exists(p) {
 function readIf(p) {
   return exists(p) ? fs.readFileSync(p, 'utf8') : null;
 }
+function backupFile(file, dryRun) {
+  let backup = `${file}.bak`;
+  for (let i = 1; exists(backup); i++) backup = `${file}.bak.${i}`;
+  if (!dryRun) fs.copyFileSync(file, backup, fs.constants.COPYFILE_EXCL);
+  return backup;
+}
 function today() {
   const d = new Date();
   const p = (n) => String(n).padStart(2, '0');
@@ -84,14 +90,9 @@ function markerBlock(mode) {
       ? '本工作区已接入路由式 agent 知识体系。**先读 `agent/index.md`**；工程内的任务去 `projects/<工程>/AGENTS.md`，工程之间互不干扰。'
       : '本工程已接入路由式 agent 知识体系。**先读 `agent/index.md`**，按「触发条件 → 文件」跳转，不要全仓盲扫。',
     '',
-    '- 会话开始先读 `agent/context/plan.md`；疑似做过的事先查 `agent/context/archive/ARCHIVE_INDEX.md`',
-    '- 阶段流程：`agent/playbooks/10-create.md` … `50-archive.md`',
-    '- 约束规则：`agent/rules/00-global.md`（写作 / 答复自包含 / 推进与停止）… `70-isolation.md`',
-    '- 事实卡：`agent/context/`（需求 / 硬件 / 软件 / 计划 / 决策）',
-    '- 需求与选型调研：`agent/rules/50-research.md`',
-    ...(ws ? ['- 多工程隔离：`agent/rules/70-isolation.md`（默认只读他工程）'] : []),
-    '- 符号定位：`doc/CODE_MAP_INDEX.md`；不存在则用 `code-map` skill 生成',
-    '- 新增规则用 `agent-scaffold extend`；新增能力用 `skill-author`',
+    ws
+      ? '- 跨工程任务先在索引中确认范围与隔离规则。各工程的接手命令见该工程入口。'
+      : '- 接手工程时查 `agent/context/software.md` 的运行与验证命令，读 `agent/context/plan.md` 对齐进度。',
     '',
     '本节由 agent-scaffold 生成与维护；重复执行只替换本节。**本节之外的既有约定优先**，冲突时以项目原有规则为准。',
     END,
@@ -105,23 +106,21 @@ function render(tpl, name) {
     .replaceAll('{{KIT_VERSION}}', KIT_VERSION);
 }
 
-function upsertMarker(text, block) {
-  const i = text.indexOf(BEGIN);
-  const j = text.indexOf(END);
-  if (i !== -1 && j !== -1 && j > i) {
-    return { text: text.slice(0, i) + block + text.slice(j + END.length), mode: 'replace' };
+function markerRange(text) {
+  const start = text.indexOf(BEGIN);
+  const end = text.indexOf(END);
+  if (start === -1 && end === -1) return { mode: 'absent' };
+  if (start < 0 || end < start || text.lastIndexOf(BEGIN) !== start || text.lastIndexOf(END) !== end) {
+    return { mode: 'broken' };
   }
-  if (i !== -1 || j !== -1) return { text: null, mode: 'broken' };
-  const base = text.length === 0 || text.endsWith('\n') ? text : text + '\n';
-  return { text: `${base}\n${block}\n`, mode: 'append' };
+  return { mode: 'present', start, after: end + END.length };
 }
 
-function stripMarker(text) {
-  const i = text.indexOf(BEGIN);
-  const j = text.indexOf(END);
-  if (i === -1 || j === -1 || j < i) return text;
-  const rest = (text.slice(0, i) + text.slice(j + END.length)).replace(/\n{3,}/g, '\n\n');
-  return rest.trimEnd() + (rest.trim() ? '\n' : '');
+// Work on bytes: decoding the legacy prefix/suffix can change their encoding.
+function replaceMarker(bytes, range, block) {
+  const start = range.start ?? bytes.length;
+  const after = range.after ?? bytes.length;
+  return Buffer.concat([bytes.subarray(0, start), Buffer.from(block), bytes.subarray(after)]);
 }
 
 function loadManifest(root) {
@@ -141,7 +140,7 @@ function saveManifest(root, m) {
 
 /** 在指定 ## 小节的表格末尾追加一行 */
 function addRowToSection(text, heading, row) {
-  const lines = text.split(/\r?\n/);
+  const lines = text.split(/(?<=\n)/);
   /** 标题常带补充说明（「（约束，不是流程）」这类），比对时统一剥掉括号部分，避免措辞微调就找不到小节 */
   const norm = (s) => s.trim().replace(/[（(].*$/, '').trim();
   const h = lines.findIndex((l) => l.trim() === heading || norm(l) === norm(heading));
@@ -154,15 +153,16 @@ function addRowToSection(text, heading, row) {
   if (i >= lines.length) return { ok: false, reason: `${heading} 下没有表格` };
   let j = i;
   while (j < lines.length && lines[j].trim().startsWith('|')) j++;
-  lines.splice(j, 0, row);
-  return { ok: true, text: lines.join('\n') };
+  const lastRow = lines[j - 1];
+  const newline = lastRow.match(/\r?\n$/)?.[0] ?? text.match(/\r?\n/)?.[0] ?? '\n';
+  lines.splice(j, 0, lastRow.endsWith('\n') ? row + newline : newline + row);
+  return { ok: true, text: lines.join('') };
 }
 
 function detectMode(root) {
-  if (exists(path.join(root, 'projects')) && exists(path.join(root, 'agent'))) return 'workspace';
-  if (exists(path.join(root, 'doc')) && exists(path.join(root, 'agent'))) return 'workspace';
   const m = loadManifest(root);
-  return m && m.mode ? m.mode : 'project';
+  if (m?.mode) return m.mode;
+  return exists(path.join(root, 'projects')) && exists(path.join(root, 'doc')) ? 'workspace' : 'project';
 }
 
 // ---------------------------------------------------------------- commands
@@ -175,14 +175,15 @@ function detect(root) {
   const agentsPath = path.join(root, 'AGENTS.md');
   const agents = readIf(agentsPath);
   const m = loadManifest(root);
-  const hasMarker = !!agents && agents.includes(BEGIN) && agents.includes(END);
+  const marker = markerRange(agents ?? '').mode;
+  const hasMarker = marker === 'present';
   const cmap = path.join(root, 'doc', 'CODE_MAP_INDEX.md');
   const projects = exists(path.join(root, 'projects'))
     ? fs.readdirSync(path.join(root, 'projects'), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
     : [];
 
-  info(`AGENTS.md        ${agents ? `存在 · ${lineCount(agents)} 行` : '不存在'}`);
-  info(`kit marker       ${hasMarker ? '已注入' : '无'}`);
+  info(`AGENTS.md        ${agents !== null ? `存在 · ${lineCount(agents)} 行` : '不存在'}`);
+  info(`kit marker       ${hasMarker ? '已注入' : marker === 'broken' ? '异常' : '无'}`);
   info(`agent/ 目录      ${exists(path.join(root, 'agent')) ? '存在' : '不存在'}`);
   info(`manifest         ${m ? `v${m.kitVersion} · ${m.mode || 'project'} · ${Object.keys(m.files || {}).length} 个受管文件` : '无'}`);
   info(`代码地图         ${exists(cmap) ? 'doc/CODE_MAP_INDEX.md 已生成' : '未生成'}`);
@@ -190,8 +191,10 @@ function detect(root) {
   if (exists(path.join(root, 'doc'))) info(`doc/ 共享资料    存在`);
 
   head('建议');
-  if (!agents) {
+  if (agents === null) {
     ok('新工程 → init（多工程工作区加 --mode workspace）');
+  } else if (m?.agentsMdMode === 'created') {
+    ok('已接入 → verify 检查现有路由与受管文件');
   } else if (hasMarker) {
     ok('已接入 → adopt 可安全重复执行（只替换 marker 区块）');
   } else if (agents.includes(BEGIN) || agents.includes(END)) {
@@ -253,7 +256,8 @@ function install(root, { mode, name, force, dryRun }) {
     const tpl = fs.readFileSync(tplAbs, 'utf8');
 
     if (f.special === 'agents') {
-      const cur = readIf(destAbs);
+      const bytes = exists(destAbs) ? fs.readFileSync(destAbs) : null;
+      const cur = bytes?.toString('utf8') ?? null;
       const trackedHash = manifest.files[f.dest];
       const createdByUs = manifest.agentsMdMode === 'created';
       /** 上次由本工具创建、且至今没被手改：内容就是模板，不该再叠一层 marker 区块 */
@@ -277,8 +281,7 @@ function install(root, { mode, name, force, dryRun }) {
           skips++;
           continue;
         }
-        const bak = destAbs + '.bak';
-        if (!dryRun) fs.copyFileSync(destAbs, bak);
+        const bak = backupFile(destAbs, dryRun);
         warn(`已备份 → ${path.relative(root, bak)}`);
         const body = render(tpl, projName);
         if (!dryRun) fs.writeFileSync(destAbs, body, 'utf8');
@@ -287,22 +290,22 @@ function install(root, { mode, name, force, dryRun }) {
         ok(`按模板刷新 ${f.dest}（${lineCount(cur)} → ${lineCount(body)} 行）`);
         writes++;
       } else {
-        const r = upsertMarker(cur, markerBlock(mode));
-        if (r.mode === 'broken') {
-          bad(`${f.dest} 的 marker 残缺，跳过（请人工修正后重跑）`);
-          skips++;
-          continue;
+        const range = markerRange(bytes);
+        if (range.mode === 'broken') {
+          bad(`${f.dest} 的 marker 残缺、重复或顺序错误，请人工修正后重跑`);
+          return 1;
         }
-        if (r.text === cur) {
+        const updated = replaceMarker(bytes, range, markerBlock(mode));
+        if (updated.equals(bytes)) {
           info(`${f.dest} 已是最新，未改`);
           manifest.agentsMdMode = 'marker';
           skips++;
           continue;
         }
-        if (!dryRun) fs.writeFileSync(destAbs, r.text, 'utf8');
+        if (!dryRun) fs.writeFileSync(destAbs, updated);
         manifest.agentsMdMode = 'marker';
         delete manifest.files[f.dest];
-        ok(`${r.mode === 'append' ? '注入' : '替换'} marker 区块 · ${f.dest}（${lineCount(cur)} → ${lineCount(r.text)} 行，区块外零改动）`);
+        ok(`${range.mode === 'absent' ? '注入' : '替换'} marker 区块 · ${f.dest}（区块外零改动）`);
         writes++;
       }
       continue;
@@ -315,8 +318,7 @@ function install(root, { mode, name, force, dryRun }) {
       continue;
     }
     if (cur !== null && force) {
-      const bak = destAbs + '.bak';
-      if (!dryRun) fs.copyFileSync(destAbs, bak);
+      const bak = backupFile(destAbs, dryRun);
       warn(`已备份 → ${path.relative(root, bak)}`);
     }
     const body = render(tpl, projName);
@@ -334,7 +336,7 @@ function install(root, { mode, name, force, dryRun }) {
   if (writes && !dryRun) {
     if (mode === 'workspace') {
       info('下一步：在 projects/ 下建工程目录，对每个工程跑 init（工程级）');
-      info('然后填 AGENTS.md 的「工程一览」表与 agent/context/requirements.md');
+      info('然后填 agent/index.md 的工程表与 agent/context/requirements.md');
     } else {
       info('下一步：填 agent/context/*.md 的「事实源」指针（只写路径，不搬正文）');
     }
@@ -355,9 +357,8 @@ function extend(root, { title, body, slug, dryRun }) {
     return 1;
   }
 
-  const touched = [];
-  const existing = fs.readdirSync(rulesDir).filter((f) => /^\d{2}-.+\.md$/.test(f));
-  const nums = existing.map((f) => Number(f.slice(0, 2)));
+  const existing = fs.readdirSync(rulesDir).filter((f) => /^\d{2,}-.+\.md$/.test(f));
+  const nums = existing.map((f) => parseInt(f, 10));
   const next = String((nums.length ? Math.max(...nums) : 0) + 10).padStart(2, '0');
   const autoSlug = (slug || title)
     .toLowerCase()
@@ -400,29 +401,22 @@ ${body || '（待补充：具体约束、判定标准）'}
     bad(`目标已存在：${rel}`);
     return 1;
   }
-  if (!dryRun) {
-    fs.writeFileSync(abs, content, 'utf8');
-  }
-  ok(`创建 ${rel}（编号 ${next}）`);
-  touched.push(rel);
-
   const indexPath = path.join(root, 'agent', 'index.md');
-  const idx = readIf(indexPath);
-  if (idx) {
-    const r = addRowToSection(idx, '## 规则（约束）', `| ${title} | \`${rel}\` |`);
-    if (r.ok) {
-      if (!dryRun) fs.writeFileSync(indexPath, r.text, 'utf8');
-      ok(`agent/index.md 已加一行`);
-      touched.push('agent/index.md');
-    } else {
-      warn(`index 未自动登记（${r.reason}），请手工加一行：| ${title} | \`${rel}\` |`);
-    }
-  }
-
   const decPath = path.join(root, 'agent', 'context', 'decisions.md');
   const dec = readIf(decPath);
-  if (dec) {
-    const entry = `### ${today()} · 新增规则「${title}」
+  const mf = loadManifest(root);
+  const index = readIf(indexPath) || '';
+  const row = addRowToSection(index, '## 规则（约束）', `| ${title} | \`${rel}\` |`);
+  if (!row.ok) {
+    bad(`agent/index.md 无法登记规则：${row.reason}。请修复索引后重试。`);
+    return 1;
+  }
+  if (dec === null || !mf?.files) {
+    bad('缺少决策记录或有效 manifest，请修复后重试');
+    return 1;
+  }
+
+  const entry = `### ${today()} · 新增规则「${title}」
 
 - **决定**：把「${title}」固化为 \`${rel}\`
 - **上下文**：${body || '用户要求'}
@@ -433,52 +427,18 @@ ${body || '（待补充：具体约束、判定标准）'}
 - **成文位置**：定稿后搬进 \`docs/adr/NNNN-<slug>.md\`，这里留一行
 - **状态**：active
 `;
-    const merged = dec.trimEnd() + '\n\n' + entry;
-    if (!dryRun) fs.writeFileSync(decPath, merged, 'utf8');
-    ok('agent/context/decisions.md 已记录');
-    touched.push('agent/context/decisions.md');
+  const merged = dec + (dec.endsWith('\n') ? '\n' : '\n\n') + entry;
+  if (!dryRun) {
+    fs.writeFileSync(abs, content, { flag: 'wx', encoding: 'utf8' });
+    fs.writeFileSync(indexPath, row.text, 'utf8');
+    fs.writeFileSync(decPath, merged, 'utf8');
+    mf.files[rel] = sha256(content);
+    // 仅推进原本干净的受管文件哈希，让 uninstall 保留既有文件与用户编辑。
+    if (mf.files['agent/index.md'] === sha256(index)) mf.files['agent/index.md'] = sha256(row.text);
+    if (mf.files['agent/context/decisions.md'] === sha256(dec)) mf.files['agent/context/decisions.md'] = sha256(merged);
+    saveManifest(root, mf);
   }
-
-  const agentsPath = path.join(root, 'AGENTS.md');
-  const agents = readIf(agentsPath);
-  if (agents) {
-    const r = addRowToSection(agents, '## 2. 规则路由（约束，不是流程）', `| ${title} | \`${rel}\` |`);
-    if (r.ok) {
-      const n = lineCount(r.text);
-      if (n > BUDGET.AGENTS_MD) {
-        warn(`AGENTS.md 加这行会到 ${n} 行 > ${BUDGET.AGENTS_MD} 行预算：不加（规则已登记在 agent/index.md），需要时先减旧行`);
-      } else {
-        if (!dryRun) fs.writeFileSync(agentsPath, r.text, 'utf8');
-        ok('AGENTS.md 路由表已加一行');
-        touched.push('AGENTS.md');
-      }
-    } else if (agents.includes(BEGIN) && agents.includes(END)) {
-      const line = `- 规则：${title} → \`${rel}\``;
-      const noteRe = /^本节由 agent-scaffold.*$/m;
-      const out = noteRe.test(agents)
-        ? agents.replace(noteRe, `${line}\n$&`)
-        : agents.replace(END, `${line}\n${END}`);
-      if (!dryRun) fs.writeFileSync(agentsPath, out, 'utf8');
-      ok('AGENTS.md marker 区块内已加一行（旧工程没有规则路由表）');
-      touched.push('AGENTS.md');
-    } else {
-      info(`AGENTS.md 未自动登记（${r.reason}）；区块外的文件请手工加一行`);
-    }
-  }
-
-  if (!dryRun && touched.length) {
-    const mf = loadManifest(root);
-    if (mf) {
-      for (const t of touched) {
-        const p = path.join(root, t);
-        if (!exists(p)) continue;
-        if (t === 'AGENTS.md' && mf.agentsMdMode !== 'created') delete mf.files[t];
-        else mf.files[t] = sha256(fs.readFileSync(p));
-      }
-      saveManifest(root, mf);
-      ok(`manifest 已同步 ${touched.length} 个文件（verify 不会再报「被手工改过」）`);
-    }
-  }
+  ok(`新增 ${rel}，同步 agent/index.md、agent/context/decisions.md 与 manifest`);
 
   head('下一步');
   info(`补全 ${rel} 的「规则」与「反模式」两段`);
@@ -501,25 +461,24 @@ function verify(root) {
     bad('AGENTS.md 缺失');
     errs++;
   } else {
-    const begin = (agents.match(/<!-- agent-kit:begin -->/g) || []).length;
-    const end = (agents.match(/<!-- agent-kit:end -->/g) || []).length;
-    if (begin !== end) {
-      bad(`marker 不成对：begin=${begin} end=${end}`);
+    const range = markerRange(agents);
+    if (range.mode === 'broken') {
+      bad('marker 残缺、重复或顺序错误');
       errs++;
-    } else if (begin === 0) {
-      if (m && m.agentsMdMode === 'created') ok(`AGENTS.md ${lineCount(agents)} 行（本工具创建，无需 marker）`);
-      else {
+    } else if (range.mode === 'absent') {
+      if (m?.agentsMdMode === 'created') ok(`AGENTS.md ${lineCount(agents)} 行（本工具创建，无需 marker）`);
+      else if (m?.agentsMdMode === 'marker') {
+        bad('manifest 记录的 marker 区块缺失');
+        errs++;
+      } else {
         warn('未注入 marker 区块（adopt 未执行？）');
         warns++;
       }
-    } else if (begin > 1) {
-      bad(`marker 重复 ${begin} 处`);
-      errs++;
     } else {
       ok(`marker 成对 · AGENTS.md ${lineCount(agents)} 行`);
     }
     /** 旧版 init 会把模板再叠一层 marker，这里兜底识别 */
-    if (begin > 0 && /每次会话先做三件事/.test(agents)) {
+    if (range.mode === 'present' && /每次会话先做三件事/.test(agents)) {
       warn('AGENTS.md 既有完整路由模板又叠加了 marker 区块（疑似重复生成）：两份保留一份即可');
       warns++;
     }
@@ -619,6 +578,13 @@ function uninstall(root, { dryRun }) {
     bad('无 manifest，拒绝卸载（无法判断哪些是本工具创建的文件）');
     return 1;
   }
+  const agentsPath = path.join(root, 'AGENTS.md');
+  const agents = m.agentsMdMode === 'marker' && exists(agentsPath) ? fs.readFileSync(agentsPath) : null;
+  const range = agents && markerRange(agents);
+  if (range?.mode === 'broken') {
+    bad('marker 残缺、重复或顺序错误，请人工修正后再卸载');
+    return 1;
+  }
   let removed = 0;
   let kept = 0;
 
@@ -638,19 +604,10 @@ function uninstall(root, { dryRun }) {
     removed++;
   }
 
-  const agentsPath = path.join(root, 'AGENTS.md');
-  const agents = readIf(agentsPath);
-  if (agents && agents.includes(BEGIN)) {
-    if (m.agentsMdMode === 'created') {
-      if (!dryRun) fs.rmSync(agentsPath);
-      ok('删除 AGENTS.md（本工具创建）');
-      removed++;
-    } else {
-      const stripped = stripMarker(agents);
-      if (!dryRun) fs.writeFileSync(agentsPath, stripped, 'utf8');
-      ok(`剥离 marker 区块 · AGENTS.md（${lineCount(agents)} → ${lineCount(stripped)} 行）`);
-      removed++;
-    }
+  if (range?.mode === 'present') {
+    if (!dryRun) fs.writeFileSync(agentsPath, replaceMarker(agents, range, ''));
+    ok('剥离 marker 区块 · AGENTS.md');
+    removed++;
   }
 
   if (!dryRun) {
@@ -733,7 +690,7 @@ function main(argv) {
 
   init      新工程：全量生成
   adopt     旧工程：既有 AGENTS.md 只注入 marker 区块，其余零改动
-  extend    把用户新增的规则/想法按编号落进 agent/rules，并同步索引与决策
+  extend    新建规则分片，在 agent/index.md 登记、记录决策并同步 manifest；根路由保持原样
   --mode    project（默认，单工程）| workspace（doc/ + projects/ 多工程工作区）
   --force   覆盖 agent/ 下已存在文件（先备份 .bak）
   --dry-run 只报告，不落盘

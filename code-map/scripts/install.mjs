@@ -26,7 +26,7 @@ for (let i = 2; i < process.argv.length; i++) {
     if (!value) throw new Error(`${arg} needs a value`);
     if (arg === '--agent') options.agents.push(...value.split(',').map(name => name.trim()).filter(Boolean));
     else options[arg.slice(2)] = value;
-  } else if (arg === '--all-agents') options.agents.push(...Object.keys(HOME_TARGETS));
+  } else if (arg === '--all-agents') options.allAgents = true;
   else if (arg === '--library') options.library = true;
   else if (arg === '--dry-run') options.dryRun = true;
   else if (arg === '--list') options.list = true;
@@ -161,7 +161,10 @@ const PROJECT_MARKERS = ['package.json', 'Cargo.toml', 'go.mod', 'pyproject.toml
 const looksLikeProject = dir =>
   fs.existsSync(path.join(dir, '.git')) ||
   fs.existsSync(path.join(dir, 'src')) ||
-  PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)));
+  fs.existsSync(path.join(dir, 'Core', 'Src')) ||
+  PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker))) ||
+  fs.readdirSync(dir, { withFileTypes: true }).some(entry =>
+    entry.isFile() && /\.(?:ioc|uvprojx?|ewp|pro|csproj|slnx?)$/i.test(entry.name));
 
 function discoverCandidates(root) {
   return fs.readdirSync(root, { withFileTypes: true })
@@ -224,14 +227,20 @@ try {
     console.log(`${'library'.padEnd(9)} ${path.join(home, ...LIBRARY)}${fs.existsSync(path.join(home, ...LIBRARY)) ? '' : '  (missing)'}`);
   } else {
     const targets = [];
-    for (const agent of options.agents) {
+    if (options.allAgents) {
+      for (const [agent, parts] of Object.entries(HOME_TARGETS)) {
+        if (fs.statSync(path.join(home, ...parts), { throwIfNoEntry: false })?.isDirectory()) options.agents.push(agent);
+      }
+      if (!options.agents.length) console.log('No existing agent skills directories found.');
+    }
+    for (const agent of new Set(options.agents)) {
       const parts = HOME_TARGETS[agent];
       if (!parts) throw new Error(`Unknown agent: ${agent}. Known: ${Object.keys(HOME_TARGETS).join(', ')}`);
       targets.push(path.join(home, ...parts, 'code-map'));
     }
     if (options.library) targets.push(path.join(home, ...LIBRARY));
     if (options.dir) targets.push(path.resolve(options.dir));
-    if (!targets.length && !options.project && !options.workspace) {
+    if (!targets.length && !options.allAgents && !options.project && !options.workspace) {
       process.stderr.write(usage);
       process.exitCode = 2;
     }

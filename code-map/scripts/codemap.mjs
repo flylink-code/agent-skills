@@ -419,7 +419,6 @@ async function collectRecords(root, config, { check, selected, version }) {
 
 export function buildReferenceGraph(files, records) {
   const declarations = new Map();
-  const byName = new Map();
   const rustDeclarations = new Map();
   for (const file of files) {
     const local = new Map();
@@ -428,9 +427,6 @@ export function buildReferenceGraph(files, records) {
     for (const symbol of records[file].symbols) {
       if (symbol.scope !== '' || !REFERENCE_KINDS.has(symbol.kind)) continue;
       if (!local.has(symbol.name)) local.set(symbol.name, symbol);
-      const sites = byName.get(symbol.name) ?? [];
-      sites.push({ file, line: symbol.line, kind: symbol.kind });
-      byName.set(symbol.name, sites);
       if (crate && modulePath) {
         const key = `${crate}\u0000${symbol.name}`;
         const entries = rustDeclarations.get(key) ?? [];
@@ -450,23 +446,14 @@ export function buildReferenceGraph(files, records) {
     incoming.set(key, (incoming.get(key) ?? 0) + 1);
     resolved++;
   };
-  const ambiguousNames = name => new Set((byName.get(name) ?? []).map(site => site.file)).size > 1;
-  const resolveByName = name => {
-    const sites = byName.get(name) ?? [];
-    if (!sites.length) return unresolved++;
-    if (ambiguousNames(name)) return ambiguous++;
-    return bumpDeclaration(sites[0].file, sites[0].line, name);
-  };
   for (const file of files) {
     for (const entry of records[file].imports ?? []) {
       if (Array.isArray(entry.prefix)) {
         for (const name of entry.names) {
           const anchor = rustAnchorPath(file, entry.prefix);
           const candidates = anchor ? (rustDeclarations.get(`${rustCrateOf(file)}\u0000${name}`) ?? []) : [];
-          const inScope = candidates.filter(site => anchor.length === 0 || site.path === anchor.join('::') || site.path.startsWith(`${anchor.join('::')}::`));
-          const exact = inScope.filter(site => site.path === anchor.join('::'));
-          const pool = exact.length ? exact : inScope;
-          if (!pool.length) resolveByName(name);
+          const pool = candidates.filter(site => site.path === anchor.join('::'));
+          if (!pool.length) unresolved++;
           else if (pool.length > 1) ambiguous++;
           else bumpDeclaration(pool[0].file, pool[0].line, name);
         }
@@ -478,7 +465,7 @@ export function buildReferenceGraph(files, records) {
           else unresolved++;
         }
       } else {
-        for (const name of entry.names) resolveByName(name);
+        unresolved += entry.names.length;
       }
     }
   }
@@ -511,13 +498,13 @@ function rustCrateOf(file) {
   if (!file.endsWith('.rs')) return '';
   const parts = file.split('/');
   const index = parts.lastIndexOf('src');
-  return index > 0 ? parts.slice(0, index).join('/') : '';
+  return index >= 0 ? parts.slice(0, index).join('/') || '.' : '';
 }
 
 function rustModulePath(file) {
   const parts = file.split('/');
   const index = parts.lastIndexOf('src');
-  if (index <= 0 || index >= parts.length - 1) return null;
+  if (index < 0 || index >= parts.length - 1) return null;
   const inner = parts.slice(index + 1);
   const base = inner[inner.length - 1].replace(/\.rs$/, '');
   const dirs = inner.slice(0, -1);
@@ -543,7 +530,43 @@ const hubRows = graph => {
   return rows.sort((a, b) => b.count - a.count || compare(a.name, b.name) || compare(a.file, b.file));
 };
 
-function renderHubsPage({ files, records, graph, config, mapDirRel, indexFileRel }) {
+// Classify the inventory, rather than the observed edges: a TS hub in a mixed
+// project says nothing about the C++ files in the same module.
+function coverageNotes(files) {
+  const declarationOnly = new Set();
+  for (const file of files) {
+    const ext = path.extname(file);
+    if (ext === '.rs' || MODULE_EXTENSIONS.includes(ext)) continue;
+    const language = treeLanguages[ext.toLowerCase()];
+    declarationOnly.add(({ c: 'C/C++', cpp: 'C/C++', c_sharp: 'C#', go: 'Go', java: 'Java' })[language] ?? (ext === '.py' ? 'Python' : ext));
+  }
+  if (!declarationOnly.size) return [];
+  const notes = [`Declaration navigation only: ${[...declarationOnly].sort(compare).join(', ')}. Import-edge coverage is limited to Rust and TS/JS.`];
+  if (declarationOnly.has('C/C++')) notes.push('C/C++ sources and headers (including Qt C++): some header prototypes may be missed. #include, macros, calls and Qt signal/slot connections are outside the reference graph.');
+  return notes;
+}
+
+function moduleInventory(files, records, config) {
+  const groups = new Map();
+  for (const file of files) {
+    const module = moduleOf(file, config);
+    if (!groups.has(module)) groups.set(module, { module, members: [], file, symbol: null });
+    const group = groups.get(module);
+    group.members.push(file);
+    if (!group.symbol && records[file].symbols.length) {
+      group.file = file;
+      group.symbol = records[file].symbols[0];
+    }
+  }
+  return [...groups.values()].sort((a, b) => compare(a.module, b.module));
+}
+
+function representativeLink({ file, symbol }, prefix) {
+  const source = `${prefix}${link(file)}`;
+  return symbol ? `[${escape(file)}:${symbol.line}](${source}#L${symbol.line}) (${escape(symbol.name)})` : `[${escape(file)}](${source})`;
+}
+
+function renderHubsPage({ files, records, graph, config, mapDirRel, indexFileRel, groups }) {
   const relRoot = '../'.repeat(mapDirRel.split('/').filter(Boolean).length);
   const indexFromMap = posixRel(mapDirRel, indexFileRel);
   const limit = Math.min(config.hubCount ?? 40, config.pageRows);
@@ -558,39 +581,56 @@ function renderHubsPage({ files, records, graph, config, mapDirRel, indexFileRel
     '',
     `${files.length} files · ${total} symbols · import edges: ${graph.stats.resolved} resolved, ${graph.stats.ambiguous} ambiguous, ${graph.stats.unresolved} unresolved.`,
     '',
-    'Edges come from `use`/`import` statements: relative specifiers for TypeScript, `crate`/`self`/`super` module paths plus a unique-name fallback for Rust. Lexical evidence, not type-checked resolution: an ambiguous or unresolved import is counted, never guessed.',
+    'Edges come from Rust `use` and TS/JS `import` or re-export statements. Resolution uses relative TS/JS specifiers and Rust module paths. External imports and missing module paths stay unresolved. Ambiguous and unresolved imports are counted separately.',
     '',
-    '| Symbol | Kind | Module | In-degree | Line |',
-    '| --- | --- | --- | ---: | --- |',
-    ...rows.map(row => `| ${escape(row.name)} | ${escape(row.kind)} | ${moduleOf(row.file, config)} | ${row.count} | [${row.line}](${relRoot}${link(row.file)}#L${row.line}) |`),
+    ...coverageNotes(files),
     ''
   ];
-  return lines.join('\n');
+  if (graph.stats.resolved) {
+    lines.push('| Symbol | Kind | Module | In-degree | Line |', '| --- | --- | --- | ---: | --- |',
+      ...rows.map(row => `| ${escape(row.name)} | ${escape(row.kind)} | ${moduleOf(row.file, config)} | ${row.count} | [${row.line}](${relRoot}${link(row.file)}#L${row.line}) |`));
+  } else {
+    lines.push('No resolved import edges. Browse by module:', '', '| Module | Files | Representative source |', '| --- | ---: | --- |',
+      ...groups.slice(0, limit).map(group => `| ${escape(group.module)} | ${group.members.length} | ${representativeLink(group, relRoot)} |`));
+    if (groups.length > limit) lines.push('', `Showing ${limit} of ${groups.length} modules. See the root index for all modules.`);
+  }
+  return [...lines, ''].join('\n');
 }
 
 export function renderOverview({ files, records, graph, config, tokens = 1024 }) {
   const hubs = hubRows(graph);
   const total = files.reduce((sum, file) => sum + records[file].symbols.length, 0);
-  const lines = [
-    `# code map overview — ${files.length} files, ${total} symbols`,
-    `# import edges: ${graph.stats.resolved} resolved, ${graph.stats.ambiguous} ambiguous, ${graph.stats.unresolved} unresolved (lexical, not type resolution)`,
-    '# most-referenced declarations first'
-  ];
-  let omitted = 0;
-  const candidates = hubs.slice(0, config.hubCount ?? 40);
-  let pushed = 0;
-  for (const hub of candidates) {
-    const row = `- ${hub.name} (${hub.kind}) ${moduleOf(hub.file, config)} ${hub.file}:${hub.line} ← ${hub.count}`;
-    if (estimateTokens([...lines, row].join('\n')) > tokens) break;
-    lines.push(row);
-    pushed++;
+  const groups = hubs.length ? [] : moduleInventory(files, records, config);
+  const lines = [];
+  let remaining = tokens * 4; // Existing estimate: four UTF-16 code units per token.
+  const append = line => {
+    const cost = line.length + (lines.length ? 1 : 0);
+    if (cost > remaining) return false;
+    remaining -= cost;
+    lines.push(line);
+    return true;
+  };
+  const header = `# code map overview — ${files.length} files, ${total} symbols`;
+  if (!append(header)) return '...'.slice(0, remaining);
+  for (const note of coverageNotes(files)) append(`# ${note}`);
+  append(`# import edges: ${graph.stats.resolved} resolved, ${graph.stats.ambiguous} ambiguous, ${graph.stats.unresolved} unresolved (lexical evidence)`);
+  append(hubs.length ? '# most-referenced declarations first' : '# No resolved import edges. Browse by module:');
+  const count = hubs.length || groups.length;
+  let shown = 0;
+  for (; shown < Math.min(count, config.hubCount ?? 40); shown++) {
+    let row;
+    if (hubs.length) {
+      const hub = hubs[shown];
+      row = `- ${hub.name} (${hub.kind}) ${moduleOf(hub.file, config)} ${hub.file}:${hub.line} ← ${hub.count}`;
+    } else {
+      const { module, members, file, symbol } = groups[shown];
+      row = `- ${module} (${members.length} files) ${file}${symbol ? `:${symbol.line} ${escape(symbol.name)}` : ''}`;
+    }
+    if (!append(row)) break;
   }
-  omitted = hubs.length - pushed;
-  if (omitted > 0) lines.push(`omitted: ${omitted} rows (${pushed} shown; raise --tokens or hubCount)`);
+  if (shown < count) append(`omitted: ${count - shown} rows (${shown} shown; raise --tokens or hubCount)`);
   return lines.join('\n');
 }
-
-const estimateTokens = text => Math.ceil(text.length / 4);
 
 export function searchSymbols(records, query, limit = 20) {
   const needle = query.toLowerCase();
@@ -629,7 +669,8 @@ export async function generate(root = defaultRoot, { check = false, module: sele
   const graph = buildReferenceGraph(files, records);
 
   const outputs = new Map();
-  const modules = [...new Set(files.map(file => moduleOf(file, config)))].sort(compare);
+  const groups = moduleInventory(files, records, config);
+  const showRepresentative = graph.stats.resolved === 0;
   const index = [
     '# Code map index',
     '',
@@ -637,16 +678,19 @@ export async function generate(root = defaultRoot, { check = false, module: sele
     '',
     `Read AGENTS.md → [hubs](${mapFromIndex}/hubs.md) → module → file/symbol page → source. [Method, commands and limits](CODE_MAP.md).`,
     '',
-    '| Module | Files | Symbols | Map |',
-    '| --- | ---: | ---: | --- |'
+    ...coverageNotes(files),
+    '',
+    '| Module | Files | Symbols | Map |' + (showRepresentative ? ' Representative source |' : ''),
+    '| --- | ---: | ---: | --- |' + (showRepresentative ? ' --- |' : '')
   ];
   let totalSymbols = 0;
   let diagnostics = 0;
-  for (const module of modules) {
-    const members = files.filter(file => moduleOf(file, config) === module);
+  const sourceFromIndex = posixRel(indexDirRel, '.') + '/';
+  for (const group of groups) {
+    const { module, members } = group;
     const count = members.reduce((sum, file) => sum + records[file].symbols.length, 0);
     totalSymbols += count;
-    index.push(`| ${module} | ${members.length} | ${count} | [open](${mapFromIndex}/${module}.md) |`);
+    index.push(`| ${module} | ${members.length} | ${count} | [open](${mapFromIndex}/${module}.md) |` + (showRepresentative ? ` ${representativeLink(group, sourceFromIndex)} |` : ''));
     const moduleRows = [];
     for (const file of members) {
       const record = records[file];
@@ -699,12 +743,12 @@ export async function generate(root = defaultRoot, { check = false, module: sele
       ].join('\n'));
     }
   }
-  outputs.set(`${mapDirRel}/hubs.md`, renderHubsPage({ files, records, graph, config, mapDirRel, indexFileRel }));
+  outputs.set(`${mapDirRel}/hubs.md`, renderHubsPage({ files, records, graph, config, mapDirRel, indexFileRel, groups }));
   index.push(
     '',
     `Total: ${files.length} source files, ${totalSymbols} extracted symbols, ${diagnostics} parser diagnostics; import edges ${graph.stats.resolved} resolved / ${graph.stats.ambiguous} ambiguous / ${graph.stats.unresolved} unresolved.`,
     '',
-    'Scope includes Rust/TS/JS declarations; excludes imports, parameters, runtime/macro-generated symbols. Shell/PowerShell/BAT use lexical navigation.'
+    'Use declaration lines to navigate source. Runtime and macro-generated symbols are outside the index. Shell/PowerShell/BAT use lexical navigation.'
   );
   outputs.set(indexFileRel, index.join('\n') + '\n');
 
@@ -741,7 +785,7 @@ No command                     incremental generation (first run, config change,
 --check                        verify without writing; exits non-zero on drift
 --find <name> [--limit N]      symbol lookup: path:line, kind, scope
 --outline <file>               every declaration of one file, in source order
---map [--tokens N]             token-budgeted overview of the most-referenced declarations
+--map [--tokens N]             budgeted hub ranking, or module entry points without resolved edges
 --json                         machine-readable output for --find and --outline
 --help                         this text
 
@@ -774,12 +818,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
       if (options.find !== undefined || options.outline !== undefined || options.map) {
         const { config, files, records } = await loadProject(root);
         if (options.find !== undefined) {
+          for (const note of coverageNotes(files)) console.error(note);
           const hits = searchSymbols(records, options.find, options.limit);
           if (options.json) console.log(JSON.stringify(hits, null, 1));
           else if (!hits.length) console.error(`no symbol matches "${options.find}"`);
           else console.log(hits.map(hit => `${hit.file}:${hit.line}\t${hit.kind}\t${hit.scope || '-'}\t${hit.name}`).join('\n'));
         } else if (options.outline !== undefined) {
           const result = outlineOf(records, options.outline);
+          for (const note of coverageNotes([result.file])) console.error(note);
           if (options.json) console.log(JSON.stringify(result, null, 1));
           else console.log([`# ${result.file} — ${result.symbols.length} declarations`, ...result.symbols.map(symbol => `${String(symbol.line).padStart(5)}  ${symbol.kind}\t${symbol.scope ? `${symbol.scope}::` : ''}${symbol.name}`)].join('\n'));
         } else {

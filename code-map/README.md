@@ -17,7 +17,7 @@ node doc/codemap.mjs --check                       # 校验零漂移（CI 可用
 
 Agent 在陌生仓库里最常见的浪费是全仓 `grep` + 整文件读。代码地图把这一步压缩成 1~3 次调用：先看枢纽，知道名字就查行号，知道文件就看清单，实在不知道才走"索引 → 模块页 → 符号页"。生成物可以进版本库，人和 Agent 读同一份真相。
 
-新支持语言只索引声明，不统计这些语言的导入边；不要用枢纽排序判断它们的依赖关系。
+C/C++ 固件默认覆盖 `src`、`include` 和常见的 `Core` 布局。接入时按实际源码目录调整 `roots` 和 `modules`，例如给驱动、协议和界面分别命名。没有可排名导入时，`--map` 按模块给出文件数和代表文件，供后续 `--outline` 定位。混合上位机中的 TS/JS 导入可以参与排名，C/C++、C# 和 Python 的声明可单独查询。头文件原型、宏和 Qt 信号槽的实际绑定请结合源码与对应构建配置复核。
 
 **它不是**调用图、类型系统或测试的替代品：只有导入级证据，方法调用、trait 派发、宏展开、动态导入都不计入；缺少边不等于没有依赖。
 
@@ -37,7 +37,7 @@ node code-map/scripts/install.mjs --workspace D:\ws   # 多工程：装每个工
 node code-map/scripts/install.mjs --list --dry-run    # 看会写到哪里、会改什么
 ```
 
-`--project` 只复制 `codemap.mjs` 与配置模板，**已有 `codemap.config.json` 不会被覆盖**；`--workspace` 读取 `doc/codemap-workspace.json` 里的 `projects`（没有则自动发现已含配置的子目录），对每个工程执行一次 `--project`，再把 `codemap-workspace.mjs`、登记表模板与 `AGENTS.md` 片段放进工作区 `doc/`；`--library` / `--agent` 会镜像 `SKILL.md`、`README.md`、`scripts/`、`templates/`，目标里多余的旧文件会被清掉（遇到链接时写穿链接，链接本身不动）。
+`--project` 只复制 `codemap.mjs` 与配置模板，**已有 `codemap.config.json` 不会被覆盖**；`--workspace` 读取 `doc/codemap-workspace.json` 里的 `projects`（首次安装时按一级子目录中的工程标记发现项目，例如 `Core/Src`、Qt `.pro`、`.csproj` 或 `pyproject.toml`），对每个工程执行一次 `--project`，再把 `codemap-workspace.mjs`、登记表模板与 `AGENTS.md` 片段放进工作区 `doc/`；`--library` / `--agent` 会镜像 `SKILL.md`、`README.md`、`scripts/`、`templates/`，目标里多余的旧文件会被清掉（遇到链接时写穿链接，链接本身不动）。
 
 **用在某个项目里**：装好生成器后，按项目改配置再生成：
 
@@ -80,7 +80,8 @@ pnpm add -D typescript web-tree-sitter tree-sitter-wasms
 | `scripts/codemap.mjs` | 生成器本体（复制到 `<项目>/doc/codemap.mjs`） |
 | `scripts/install.mjs` | 从本仓库安装到 Agent skills 目录 / magpie 库 / 项目 `doc/` / 多工程工作区 |
 | `scripts/codemap-workspace.mjs` | 多工程编排：逐工程生成、汇总 `check`、跨工程只读 `find`、重写根登记表 |
-| `scripts/selftest.mjs` | 端到端自测：临时项目里跑生成、查询、漂移检测（包含多语言、查询、漂移和幂等检查） |
+| `scripts/selftest.mjs` | 在临时项目中验证多语言声明、模块概览、导入排名、漂移和幂等性 |
+| `scripts/workspace-selftest.mjs` | 独立检查登记表链接、输出位置、跨工程查询限额及 CI 退出码 |
 | `templates/codemap.config.json` | 配置模板（Tauri / 前后端混布形态，按项目改） |
 | `templates/AGENTS.section.md` | `AGENTS.md` 里"代码地图"一节的标准写法 |
 | `templates/codemap-workspace.json` | 多工程登记表配置模板（`projects` / `shared` / `indexFile`） |

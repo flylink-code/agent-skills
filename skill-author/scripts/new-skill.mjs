@@ -2,7 +2,7 @@
 /**
  * skill-author · 按本仓库约定新增与校验技能目录
  *
- *   node new-skill.mjs new   <仓库目录> <name> --desc "作用一句话 + 何时用" [--force]
+ *   node new-skill.mjs new   <仓库目录> <name> --desc "作用一句话 + 何时用" [--force] [--dry-run]
  *   node new-skill.mjs check <仓库目录>
  *   node new-skill.mjs list  <仓库目录>
  *
@@ -76,7 +76,7 @@ function newSkill(root, name, opts) {
     bad(`目录已存在：${name}（要覆盖加 --force）`);
     return 1;
   }
-  const desc = opts.desc || `${name}：一句话说明作用。Use when the user asks to ...`;
+  const desc = opts.desc?.trim().replace(/\s+/g, ' ') || `${name}：一句话说明作用。Use when the user asks to ...`;
   const body = `---
 name: ${name}
 description: >-
@@ -118,8 +118,10 @@ node <skill>/scripts/${name}.mjs
 
 - ❌ 
 `;
-  fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'SKILL.md'), body, 'utf8');
+  if (!opts.dryRun) {
+    fs.mkdirSync(path.join(dir, 'scripts'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'SKILL.md'), body, 'utf8');
+  } else info('dry-run：预览以下变更');
   ok(`创建 ${name}/SKILL.md`);
   ok(`创建 ${name}/scripts/`);
 
@@ -131,15 +133,14 @@ node <skill>/scripts/${name}.mjs
       info('README 技能表已有该行，未改');
     } else {
       const lines = text.split(/\r?\n/);
-      let lastRow = -1;
-      for (let i = 0; i < lines.length; i++) {
-        if (/^\|\s*\[`[a-z-]+`\]\([a-z-]+\/\)/.test(lines[i])) lastRow = i;
-      }
-      if (lastRow === -1) {
+      const table = lines.findIndex(line => /^\|\s*技能\s*\|/.test(line));
+      if (table < 0 || !/^\|[\s:|-]+\|\s*$/.test(lines[table + 1] || '')) {
         warn('README 里找不到技能表，请手工加一行');
       } else {
-        lines.splice(lastRow + 1, 0, row);
-        fs.writeFileSync(readme, lines.join('\n'), 'utf8');
+        let end = table + 2;
+        while (end < lines.length && lines[end].startsWith('|')) end++;
+        lines.splice(end, 0, row);
+        if (!opts.dryRun) fs.writeFileSync(readme, lines.join(text.includes('\r\n') ? '\r\n' : '\n'), 'utf8');
         ok('README 技能表已加一行');
       }
     }
@@ -199,6 +200,10 @@ function check(root) {
       errs++;
       continue;
     }
+    if (!NAME_RE.test(name)) {
+      bad(`${name}: 技能目录名必须是小写连字符格式`);
+      errs++;
+    }
     if (!fm.name) {
       bad(`${name}: frontmatter 缺 name`);
       errs++;
@@ -228,7 +233,10 @@ function check(root) {
         .readdirSync(scripts)
         .filter((f) => !f.startsWith('.'))
         .filter((f) => !/\.(mjs|js|cjs|ps1|sh|py)$/.test(f));
-      if (bad_.length) warn(`${name}: scripts/ 里有非脚本文件 ${bad_.join(', ')}`);
+      if (bad_.length) {
+        warn(`${name}: scripts/ 里有非脚本文件 ${bad_.join(', ')}`);
+        warns++;
+      }
     }
   }
 
@@ -259,13 +267,20 @@ function main(argv) {
   const pos = [];
   for (let i = 3; i < argv.length; i++) {
     if (argv[i].startsWith('--')) {
-      if (['--desc'].includes(argv[i])) i++;
+      if (cmd !== 'new' || !['--desc', '--force', '--dry-run'].includes(argv[i])) {
+        bad(`未知参数：${argv[i]}`);
+        return 2;
+      }
+      if (argv[i] === '--desc') {
+        if (!argv[i + 1] || argv[i + 1].startsWith('--')) return 2;
+        i++;
+      }
       continue;
     }
     pos.push(argv[i]);
   }
   const root = path.resolve(pos[0] || '.');
-  const opts = { desc: val('--desc'), force: flags.has('--force') };
+  const opts = { desc: val('--desc'), force: flags.has('--force'), dryRun: flags.has('--dry-run') };
 
   switch (cmd) {
     case 'new':
@@ -282,7 +297,7 @@ function main(argv) {
       console.log(`skill-author
 
 用法：
-  node new-skill.mjs new   <仓库目录> <name> --desc "作用 + 何时用" [--force]
+  node new-skill.mjs new   <仓库目录> <name> --desc "作用 + 何时用" [--force] [--dry-run]
   node new-skill.mjs check <仓库目录>
   node new-skill.mjs list  <仓库目录>
 

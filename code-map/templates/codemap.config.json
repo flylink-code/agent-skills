@@ -1,5 +1,5 @@
 {
-  "roots": ["src", "src-tauri", "tests", "scripts"],
+  "roots": ["src", "include", "Core", "src-tauri", "tests", "scripts"],
   "extensions": [".rs", ".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".py", ".cs", ".go", ".java", ".c", ".h", ".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".ps1", ".bat", ".cmd", ".sh"],
   "excludeSegments": [
     ".cargo",
@@ -29,6 +29,8 @@
   "hubCount": 40,
   "defaultModule": "tooling",
   "modules": {
+    "Core/": "firmware-core",
+    "include/": "public-headers",
     "src-tauri/src/*/": "rust-*",
     "src-tauri/src/": "rust-root",
     "src-tauri/": "rust-tauri",

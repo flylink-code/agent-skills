@@ -17,7 +17,7 @@
 
 | 触发条件 | 文件 |
 | --- | --- |
-| 任何回答：写作与措辞、答复自包含、推进与停止、证据等级、输出形状 | `agent/rules/00-global.md` |
+| 需判断证据强弱、行动边界或如何组织复杂答复 | `agent/rules/00-global.md` |
 | 改代码前 | `agent/rules/10-code.md` |
 | 写 UI 文案 / 注释 / TODO / 提交措辞 | `agent/rules/15-audience.md` |
 | 提交 / 分支 / 回滚 | `agent/rules/20-git.md` |

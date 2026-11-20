@@ -63,7 +63,7 @@ node doc/codemap.mjs --outline <文件>   # 文件结构
 
 ### Step 7: 更新
 
-- `agent/context/plan.md`：完成项移出（删掉或进归档，不留在计划里），写新的下一步 ≥3 条
+- `agent/context/plan.md`：移出已完成的待办，保留最近一次验证的命令或用例、结果及证据位置。仍有工作时写接手人从哪里继续；若阻塞，写触发恢复的条件和满足后先做的动作
 - `agent/context/software.md`：接口/模块变化
 - `agent/context/decisions.md`：重大取舍
 

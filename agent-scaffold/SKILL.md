@@ -13,19 +13,19 @@ description: >-
 
 # Agent 文件体系：全流程知识与接入
 
-给一个工程（或一个包含多个工程的工作区）搭一套**路由式** Agent 知识体系：主文件只做索引，
+给一个工程（或一个包含多个工程的工作区）搭一套**路由式** Agent 知识体系：主文件保留构建、验证、边界与索引，
 流程与规则按需读取。目标是让下一个会话（或下一个模型）不用重新问一遍、不用重做已完成的事。
 
 ## 它解决什么
 
 | 症状 | 本体系的对应件 |
 | --- | --- |
-| 模型给个结论就停，把活推回给人 | `rules/00-global.md`「推进与停止」+「输出形状」（固定四段，不许以「证据不足」收尾） |
+| 模型给个结论就停，把活推回给人 | `rules/00-global.md`「推进与停止」+「输出形状」（按任务组织，给出可执行的判据） |
 | 满口套话、答复像推理笔记，离开前面的播报就读不懂 | `rules/00-global.md`「语言与写作」「答复自包含」（为读者重写，不复用推理简写） |
 | 只说「根因未定」，不给可执行的下一步 | `agent/rules/40-debug.md` + `playbooks/30-debug.md` |
 | 新会话重复做已经做完的事 | `agent/context/archive/ARCHIVE_INDEX.md` + `rules/60-archive.md` |
 | 引用几个月前的结论当现状 | 文档 `status` 字段 + 归档卡「失效条件」 |
-| 需求/选型拍脑袋 | `rules/50-research.md`（先本地、再官方文档、≥3 独立来源） |
+| 需求/选型拍脑袋 | `rules/50-research.md`（先查本地，按决策风险补充外部证据） |
 | 改 A 工程顺手动了 B 工程 | `rules/70-isolation.md`（默认互不读写） |
 | 代码 / UI / 文档里留下「按照用户要求…」 | `rules/15-audience.md`（写给最终读者，对话痕迹只进回复） |
 | 规则越写越长，模型开始不遵守 | 三层预算 + `verify` 机器校验 |
@@ -70,14 +70,13 @@ agent/
   .manifest.json              # 写入记录，供 verify / uninstall
 ```
 
-工作区模式（`--mode workspace`）把 `AGENTS.md` 换成工作区路由（含工程一览表），
+工作区模式（`--mode workspace`）把 `AGENTS.md` 换成工作区路由（工程清单在 `agent/index.md`），
 `projects/` 下每个子目录各自再跑一次工程级 `init`。**代码地图不在这里**：
 沿用 `code-map` 的 `doc/CODE_MAP_INDEX.md` 契约，避免两套地图漂移。
 
-## 行为约束的落点（v2.1 起，源自 GPT-6.2 官方提示词）
+## 接手入口
 
-四条（说人话、答复自包含、长任务不停、不明确就假设推进）每轮都要守，所以拆两份：`AGENTS.md` 留浓缩版，
-`rules/00-global.md` 放完整版（路由条件本就是「任何回答」）。与「≥3 条下一步」的张力：能自己做的先做完。
+从目标工程现有 README、CI 或维护文档取构建目录、最小验证命令和高代价边界。已有可靠入口时直接链接。旧工程优先复用原说明，补充信息写入 `agent/context/software.md`。
 
 ## 工作流程
 
@@ -87,8 +86,8 @@ Task Progress:
 - [ ] Step 2: 旧工程先 audit + plan，把重构方案给用户确认
 - [ ] Step 3: dry-run，把会写什么念给用户
 - [ ] Step 4: init 或 adopt（工作区先工作区级，再逐工程）
-- [ ] Step 5: 填 3 张事实卡 + plan.md（只写指针与结论）
-- [ ] Step 6: verify 全绿，告诉用户怎么回滚
+- [ ] Step 5: 核对工程命令、填事实卡与交接记录
+- [ ] Step 6: 运行 verify，再做一次真实任务验收，说明回滚入口
 ```
 
 ### Step 1 · 判定形态
@@ -108,7 +107,7 @@ node <skill>/scripts/scaffold.mjs detect <目录>
 
 ```powershell
 node <skill>/scripts/migrate.mjs audit <目录>          # 只读：清点文档、重复、孤儿目录
-node <skill>/scripts/migrate.mjs plan  <目录>          # 产出 agent/MIGRATION.md 供人确认
+node <skill>/scripts/migrate.mjs plan  <目录>          # 生成 .agent-kit/MIGRATION.md 供人确认，动作存入同目录的 migration.plan.json
 node <skill>/scripts/migrate.mjs apply <目录> --yes    # 按计划执行，git 分支上跑，逐批提交
 ```
 
@@ -135,8 +134,8 @@ node <skill>/scripts/scaffold.mjs adopt <目录>
 
 1. **只增不改**：除 marker 区块外不动任何既有文件。
 2. **区块内可重入**，区块外一个字节都不碰（`<!-- agent-kit:begin -->` / `<!-- agent-kit:end -->`）。
-3. **不搬、不改名、不格式化**旧文档；marker 残缺时**拒绝执行**，不猜边界。
-4. `agent/` 下已存在文件默认跳过，`--force` 才覆盖且先备份 `.bak`。
+3. marker 残缺、重复或顺序错误时，`adopt` 在写入其他文件之前报错退出。
+4. 已存在的索引、分片和事实卡默认跳过。`--force` 会先备份再覆盖这些文件，也会刷新工具创建的根路由。第一份备份为 `.bak`，后续使用 `.bak.1` 等编号。
 
 ### Step 5 · 填充事实卡（只写指针，不搬正文）
 
@@ -149,7 +148,7 @@ node <skill>/scripts/scaffold.mjs adopt <目录>
 | `## 未决项` | 卡在哪、谁来裁决 |
 | `## 最后更新` | 日期 / 更新人 |
 
-`plan.md` 写清：现在在哪个阶段、卡在哪、上一步结论、下一步三条。
+`plan.md` 记录当前目标、最近验证的版本与环境、命令、实际结果、证据位置和下一步判据。
 这三张卡是「事实源指针」，不是正文副本 —— 正文会过期，链接不会。
 
 ### Step 6 · 验收与回滚
@@ -159,12 +158,12 @@ node <skill>/scripts/scaffold.mjs verify    <目录>
 node <skill>/scripts/scaffold.mjs uninstall <目录> --dry-run
 ```
 
-`verify` 检查：marker 成对唯一、各文件行数预算、事实卡有「事实源」且含可点击路径、
-`status` frontmatter 存在、归档与调研索引存在、manifest hash 一致、代码地图是否就位。
+`verify` 检查 marker 的数量与顺序、内置分片的行数预算、事实卡「事实源」段的反引号路径格式、归档与调研索引。
+缺必需文件或 marker 异常时退出码为 1。手改造成的哈希差异、事实卡缺 `status` 和可选代码地图缺失会列为警告。指针指向的内容仍需人工核对。
 `uninstall` 只删 manifest 记录且 hash 未变的文件，只剥 marker 区块；手工改过的保留并报告。
-结构之外它管不了：规则「过时 / 互相矛盾」要靠人审，或跑 Claude Code 的 `/doctor prompt-audit`（v2.1.283+，覆盖 CLAUDE.md、AGENTS.md 与规则目录）。
+工程验收另做一次：让干净会话从根入口领取一个有已知判据的小任务，找到并运行对应最小验证。记录命令、结果、未覆盖项。缺设备时标「待上板」。验收失败就改误导它的入口或命令，再试同一任务。
 
-老工程要吃到新版规则：先 `verify` 看哪些受管文件被手改过，再 `init <目录> --force`（逐文件备份 `.bak`；`AGENTS.md` 由本工具创建的按模板刷新，adopt 进来的只替换 marker 区块）。
+旧工程升级时先运行 `verify`。在临时空目录用相同模式生成新版，对照差异合并需要的入口、规则和交接字段，保留原有工程命令、事实和进度。
 
 ## 把用户的新想法固化进体系
 
@@ -177,14 +176,14 @@ node <skill>/scripts/scaffold.mjs extend <目录> --title "日志必须带时间
 
 `extend` 会：按现有编号 +10 建 `agent/rules/NN-slug.md` → 往 `agent/index.md` 规则表加一行 →
 在 `agent/context/decisions.md` 记一条带「为什么 / 影响面 / 可逆性」的决策 →
-在 `AGENTS.md` 路由表（旧工程则 marker 区块内）加一行 → 同步 manifest。
+同步 manifest。新增规则只在索引登记。
 新增**能力**（不是规则）用 `skill-author`，两种都要先跟用户确认落到哪一层。
 
 ## 阶段与规则的接线
 
-- 阶段 `playbooks/10~50-*.md` 与规则 `rules/00~70-*.md` 一一对应，编号不跨层复用。
+- 五个阶段依次使用 `playbooks/10~50-*.md`。每个阶段按任务查 `agent/index.md`，选择对应规则。
 - 归档不是终点：每条必须有**状态 + 失效条件**；`workaround` 不得标成已修复 —— 否则下一个 agent 会把已绕过的问题当已解决。
-- 需求/选型必须先查本地、再上网；采信标准见 `rules/50-research.md`（官方文档 > 有署名工程博客 > 论坛）。
+- 需求/选型先查本地，按风险与证据缺口做外部核验；采信标准见 `rules/50-research.md`（官方文档 > 有署名工程博客 > 论坛）。
 
 ## 反模式
 
